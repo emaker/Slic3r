@@ -146,7 +146,7 @@ sub extrude_path {
             if 0 && $Slic3r::fill_density > 0 && $description =~ /fill/;
     
         if ($distance_from_last_pos >= $distance_threshold) {
-        	#jmg TODO - retract to one extrusion width towards next thread
+        	#jmg TODO
         	%retract_to = ("x" => 1, "y" => 2);
             #$gcode .= $self->retract(travel_to => $path->points->[0]);
             $gcode .= $self->retract(travel_to => $retract_to);
