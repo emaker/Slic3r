@@ -1,5 +1,6 @@
 package Slic3r::GCode;
 use Moo;
+use Math::Trig;
 
 use Slic3r::ExtrusionPath ':roles';
 use Slic3r::Geometry qw(scale unscale);
@@ -16,7 +17,8 @@ has 'elapsed_time'       => (is => 'rw', default => sub {0} );  # seconds
 has 'total_extrusion_length' => (is => 'rw', default => sub {0} );
 has 'retracted'          => (is => 'rw', default => sub {1} );  # this spits out some plastic at start
 has 'lifted'             => (is => 'rw', default => sub {0} );
-has 'last_pos'           => (is => 'rw', default => sub { Slic3r::Point->new(0,0) } );
+has 'last_pos'           => (is => 'rw', default => sub { Slic3r::Point->new(0,0) } ); # end point of previous loop
+has 'pen_pos'           => (is => 'rw', default => sub { Slic3r::Point->new(0,0) } ); # penultimate point of previous loop
 has 'last_speed'         => (is => 'rw', default => sub {""});
 has 'last_fan_speed'     => (is => 'rw', default => sub {0});
 has 'dec'                => (is => 'ro', default => sub { 3 } );
@@ -146,8 +148,15 @@ sub extrude_path {
             if 0 && $Slic3r::fill_density > 0 && $description =~ /fill/;
     
         if ($distance_from_last_pos >= $distance_threshold) {
-        	#jmg TODO - retract to one extrusion width towards next thread
-        	%retract_to = ("x" => 1, "y" => 2);
+        	#jmg - retract perp to last segment
+        	print "pen_pos x $self->pen_pos->x y $self->pen_pos->y";
+        	print "last_pos x $self->last_pos->x y $self->last_pos->y";
+        	my $alpha = atan(($self->last_pos->y-$self->pen_pos->y) / ($self->last_pos->x - $self->pen_pos->x));
+        	my $retract_to = Slic3r::Point->new($self->last_pos->x - $self->layer->flow->width * sin($alpha), $self->last_pos->y - $self->layer->flow->width * cos($alpha));
+        	#jmg - retract to one extrusion width towards next thread
+        	#my $dx = $self->last_pos->x + ($path->points->[0]->x - $self->last_pos->x) * $self->layer->flow->width / $distance_from_last_pos;
+        	#my $dy = $self->last_pos->y + ($path->points->[0]->y - $self->last_pos->y) * $self->layer->flow->width / $distance_from_last_pos;
+        	#my $retract_to = Slic3r::Point->new($dx, $dy);
             #$gcode .= $self->retract(travel_to => $path->points->[0]);
             $gcode .= $self->retract(travel_to => $retract_to);
         }
@@ -203,6 +212,7 @@ sub extrude_path {
 
 sub retract {
     my $self = shift;
+    #print "@_\n";
     my %params = @_;
     
     return "" unless $Slic3r::retract_length > 0 
@@ -231,6 +241,7 @@ sub retract {
         my $travel = [undef, $params{move_z}, $retract->[2], 'change layer and retract'];
         $gcode .= $self->G0(@$travel);
     } else {
+    	$retract = [$params{travel_to}, undef, -$Slic3r::retract_length, "retract"];
         $gcode .= $self->G1(@$retract);
         if (defined $params{move_z} && $Slic3r::retract_lift > 0) {
             my $travel = [undef, $params{move_z} + $Slic3r::retract_lift, 0, 'move to next layer (' . $self->layer->id . ') and lift'];
@@ -303,7 +314,14 @@ sub _G0_G1 {
     if ($point) {
         $gcode .= sprintf " X%.${dec}f Y%.${dec}f", 
             ($point->x * $Slic3r::scaling_factor) + $self->shift_x, 
-            ($point->y * $Slic3r::scaling_factor) + $self->shift_y; #**
+            ($point->y * $Slic3r::scaling_factor) + $self->shift_y; #*
+        #jmg TODO add to arc moves#
+        #calculate last segment vector
+        #$dx = $point->x - $self->last_pos->x;
+        #$dy = $point->y - $self->last_pos->y;
+        #$hyp = ($dx**2 + $dy**2)**0.5;
+        #$last_vect = Slic3r::Point->new($dx / $hyp, $dy / $hyp);
+        $self->pen_pos($self->last_pos);
         $self->last_pos($point);
     }
     if (defined $z && $z != $self->z) {
