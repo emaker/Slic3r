@@ -616,7 +616,7 @@ sub write_gcode {
             # extrude support material
             if ($layer->support_fills) {
                 $gcode .= $gcodegen->set_tool($Slic3r::support_material_extruder-1);
-                $gcode .= $gcodegen->extrude_path($_, 'support material',9) 
+                $gcode .= $gcodegen->extrude_path($_, 'support material') 
                     for $layer->support_fills->shortest_path($gcodegen->last_pos);
             }
         }

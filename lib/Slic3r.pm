@@ -75,10 +75,10 @@ our $first_layer_bed_temperature;
 
 # extruders
 our $extruders              = [];
-our $nozzle_diameter        = [0.5];
-our $filament_diameter      = [3];    # mm
-our $extrusion_multiplier   = [1];
-our $temperature            = [200];
+our $nozzle_diameter        = [0.5,0.8];
+our $filament_diameter      = [1.7,1.7];    # mm
+our $extrusion_multiplier   = [1,1];
+our $temperature            = [200,200];
 our $first_layer_temperature= [];
 
 # extruder mapping (1-based indexes)

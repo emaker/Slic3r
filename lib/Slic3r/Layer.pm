@@ -336,14 +336,19 @@ sub make_perimeters {
         }
         
         # do holes, then contours starting from innermost one
-        $self->add_perimeter($holes[$_], $is_external{$_} ? EXTR_ROLE_EXTERNAL_PERIMETER : undef)
-            for reverse 0 .. $#holes;
+        for (reverse 0 .. $#holes) {
+        	my $role = $is_external{$_} ? EXTR_ROLE_EXTERNAL_PERIMETER : EXTR_ROLE_HOLE;
+        	$self->add_perimeter($holes[$_], $role);
+            #print "add hole role is $role \n";        	
+        }
+            
         for my $depth (reverse 0 .. $#$island) {
             my $role = $depth == $#$island ? EXTR_ROLE_CONTOUR_INTERNAL_PERIMETER
                 : $depth == 0 ? EXTR_ROLE_EXTERNAL_PERIMETER
                 : EXTR_ROLE_PERIMETER;
             $self->add_perimeter($_, $role) for map $_->contour, @{$island->[$depth]};
-        }
+            #print "add perimeter role is $role \n";
+	        }
     }
     
     # add thin walls as perimeters
@@ -365,11 +370,11 @@ sub make_perimeters {
 sub add_perimeter {
     my $self = shift;
     my ($polygon, $role) = @_;
-    
     return unless $polygon->is_printable($self->perimeters_flow->width);
     push @{ $self->perimeters }, Slic3r::ExtrusionLoop->new(
         polygon         => $polygon,
-        role            => (abs($polygon->length) <= $Slic3r::small_perimeter_length) ? EXTR_ROLE_SMALLPERIMETER : ($role // EXTR_ROLE_PERIMETER),  #/
+        #role            => (abs($polygon->length) <= $Slic3r::small_perimeter_length) ? EXTR_ROLE_SMALLPERIMETER : ($role // EXTR_ROLE_PERIMETER),  #/
+        role            => $role,
         flow_spacing    => $self->perimeters_flow->spacing,
     );
 }
