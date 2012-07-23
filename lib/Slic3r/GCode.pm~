@@ -18,7 +18,7 @@ has 'total_extrusion_length' => (is => 'rw', default => sub {0} );
 has 'retracted'          => (is => 'rw', default => sub {1} );  # this spits out some plastic at start
 has 'lifted'             => (is => 'rw', default => sub {0} );
 has 'last_pos'           => (is => 'rw', default => sub { Slic3r::Point->new(0,0) } ); # end point of previous loop
-has 'pen_pos'           => (is => 'rw', default => sub { Slic3r::Point->new(0,0) } ); # penultimate point of previous loop
+has 'retract_pos'           => (is => 'rw', default => sub { Slic3r::Point->new(0,0) } ); # penultimate point of previous loop
 has 'last_speed'         => (is => 'rw', default => sub {""});
 has 'last_fan_speed'     => (is => 'rw', default => sub {0});
 has 'dec'                => (is => 'ro', default => sub { 3 } );
@@ -156,19 +156,9 @@ sub extrude_path {
     
         if ($distance_from_last_pos >= $distance_threshold) {
         	#print "retract req. dist pen -> last";print $self->pen_pos->distance_to($self->last_pos) * $Slic3r::scaling_factor;print "\n";
-        	if (defined $role && !points_coincide($self->last_pos,$self->pen_pos)) {
-        		#print "pen and last do NOT coincide\n";
-		    	#jmg - retract perp to last segment
-		    	my $dx = $self->last_pos->x - $self->pen_pos->x;
-		    	my $dy = $self->last_pos->y - $self->pen_pos->y;
-		    	my $h = $self->pen_pos->distance_to($self->last_pos) * $Slic3r::scaling_factor;
-		    	my $m = -2;
-	    		print "role $role \n";
-		    	$m = $m * 1 if ($role == 10);
-		    	#print "m $m\n";
-		    	my $retract_to = Slic3r::Point->new($self->last_pos->x + $m * $dy * $self->layer->flow->width / $h,$self->last_pos->y - $m * $dx * $self->layer->flow->width / $h);
+        	if (defined $self->retract_pos && defined $role && ($role == 10 || $role <= 3)) {
 	        	#jmg - retract to one extrusion width towards next thread
-	            $gcode .= $self->retract(retract_move_to => $retract_to);
+	            $gcode .= $self->retract(retract_move_to => $self->retract_pos);
 	        } else {
             	$gcode .= $self->retract(travel_to => $path->points->[0]);
            	}
@@ -202,9 +192,9 @@ sub extrude_path {
 			my $h = scale $self->layer->flow->width / $distance_to_next_point;
 			#print "$h \n";
 			$unretract_to = Slic3r::Point->new($path->points->[0]->x + $h * ($path->points->[1]->x - $path->points->[0]->x),$path->points->[0]->y + $h * ($path->points->[1]->y - $path->points->[0]->y));
-			my $first_e = $e * (1 - $h);
+			$first_e = $e * (1 - $h);
 		} else {
-			my $first_e = 0;
+			$first_e = 0;
 		}
 
 	    $gcode .= $self->unretract(unretract_move_to => $unretract_to)
@@ -237,7 +227,16 @@ sub extrude_path {
         }
         $self->elapsed_time($self->elapsed_time + $path_time);
     }
-    
+    #set retract-to pos in case it is required by the next thread. - jmg
+	my $rpos = Slic3r::Point->new(($path->points->[1]->x + $path->points->[-2]->x) / 2,($path->points->[1]->y + $path->points->[-2]->y) / 2);
+	print "rpos X";print $rpos->x;print " Y";print $rpos->y;print "\n";
+	print $path->points->[-1]->distance_to($rpos);print "\n";
+	my $m = 2;
+	$m = $m * -1 if (defined $role && $role == 10);
+	my $h = $m * scale $self->layer->flow->width / ($path->points->[-1]->distance_to($rpos));
+	print "\$h $h\n";
+	my $retract_to = Slic3r::Point->new($path->points->[-1]->x + ($rpos->x - $path->points->[-1]->x) * $h, $path->points->[-1]->y + ($rpos->y - $path->points->[-1]->y) * $h);
+    $self->retract_pos($retract_to);
     return $gcode;
 }
 
@@ -348,7 +347,7 @@ sub _G0_G1 {
         $gcode .= sprintf " X%.${dec}f Y%.${dec}f", 
             ($point->x * $Slic3r::scaling_factor) + $self->shift_x, 
             ($point->y * $Slic3r::scaling_factor) + $self->shift_y; #*
-        $self->pen_pos($self->last_pos);
+        #$self->pen_pos($self->last_pos);
         $self->last_pos($point);
     }
     if (defined $z && $z != $self->z) {
