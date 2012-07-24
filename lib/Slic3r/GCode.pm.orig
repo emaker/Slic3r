@@ -1,5 +1,6 @@
 package Slic3r::GCode;
 use Moo;
+use Math::Trig;
 
 use Slic3r::ExtrusionPath ':roles';
 use Slic3r::Geometry qw(scale unscale);
@@ -82,9 +83,22 @@ sub change_layer {
 sub extrude {
     my $self = shift;
     
+<<<<<<< HEAD
+    #print "extrude role is $_[0]{role}";
+
+    if ($_[0]->isa('Slic3r::ExtrusionLoop')) {
+    	#print " loop\n";
+        $self->extrude_loop(@_);
+    } else {
+        $_[0]->deserialize;
+        #print " path\n";
+        $self->extrude_path($_[0],$_[1],$_[0]{role});
+    }
+=======
     ($_[0]->isa('Slic3r::ExtrusionLoop') || $_[0]->isa('Slic3r::ExtrusionLoop::Packed'))
         ? $self->extrude_loop(@_)
         : $self->extrude_path(@_);
+>>>>>>> master
 }
 
 sub extrude_loop {
@@ -92,8 +106,13 @@ sub extrude_loop {
     my ($loop, $description) = @_;
     
     # extrude all loops ccw
-    $loop = $loop->unpack if $loop->isa('Slic3r::ExtrusionLoop::Packed');
+<<<<<<< HEAD
+    $loop->deserialize;
     $loop->polygon->make_counter_clockwise if $loop->role == 10;
+=======
+    $loop = $loop->unpack if $loop->isa('Slic3r::ExtrusionLoop::Packed');
+    $loop->polygon->make_counter_clockwise;
+>>>>>>> master
     
     # find the point of the loop that is closest to the current extruder position
     # or randomize if requested
@@ -120,9 +139,14 @@ sub extrude_loop {
 
 sub extrude_path {
     my $self = shift;
+<<<<<<< HEAD
     my ($path, $description, $role, $recursive) = @_;
-
+    #print "desc is $description";print " role is $role \n";
+=======
+    my ($path, $description, $recursive) = @_;
+    
     $path = $path->unpack if $path->isa('Slic3r::ExtrusionPath::Packed');
+>>>>>>> master
     $path->merge_continuous_lines;
     
     # detect arcs
@@ -140,6 +164,7 @@ sub extrude_path {
     # specified by the user *and* to the maximum distance between infill lines
     {
         my $distance_from_last_pos = $self->last_pos->distance_to($path->points->[0]) * $Slic3r::scaling_factor;
+        #print " $distance_from_last_pos \n";
         my $distance_threshold = $Slic3r::retract_before_travel;
         $distance_threshold = 2 * ($self->layer ? $self->layer->flow->width : $Slic3r::flow->width) / $Slic3r::fill_density * sqrt(2)
             if 0 && $Slic3r::fill_density > 0 && $description =~ /fill/;
@@ -158,9 +183,6 @@ sub extrude_path {
     # go to first point of extrusion path
     $gcode .= $self->G0($path->points->[0], undef, 0, "move to first $description point")
         if !points_coincide($self->last_pos, $path->points->[0]);
-    
-    # compensate retraction
-    $gcode .= $self->unretract if $self->retracted;
     
     my $area;  # mm^3 of extrudate per mm of tool movement 
     if ($path->role == EXTR_ROLE_BRIDGE) {
@@ -235,6 +257,7 @@ sub extrude_path {
 
 sub retract {
     my $self = shift;
+    #print "@_\n";
     my %params = @_;
     
     return "" unless $Slic3r::retract_length > 0 

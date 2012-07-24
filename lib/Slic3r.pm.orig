@@ -79,7 +79,15 @@ our $first_layer_bed_temperature = $bed_temperature;
 
 # extruders
 our $extruders              = [];
+<<<<<<< HEAD
+our $nozzle_diameter        = [0.5,0.8];
+our $filament_diameter      = [1.7,1.7];    # mm
+our $extrusion_multiplier   = [1,1];
+our $temperature            = [200,200];
+our $first_layer_temperature= [];
+=======
 our $nozzle_diameter        = [0.5];
+>>>>>>> master
 
 # extruder mapping (1-based indexes)
 our $perimeter_extruder         = 1;
@@ -113,7 +121,7 @@ our $infill_every_layers    = 1;
 
 # flow options
 our $extrusion_width                = 0;
-our $first_layer_extrusion_width    = 0;
+our $first_layer_extrusion_width    = '200%';
 our $perimeter_extrusion_width      = 0;
 our $infill_extrusion_width         = 0;
 our $support_material_extrusion_width = 0;

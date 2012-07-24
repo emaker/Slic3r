@@ -241,11 +241,6 @@ sub export_gcode {
     $status_cb->(35, "Preparing infill surfaces");
     $_->prepare_fill_surfaces for map @{$_->layers}, @{$self->objects};
     
-    # this will remove unprintable surfaces
-    # (those that are too tight for extrusion)
-    $status_cb->(40, "Cleaning up");
-    $_->remove_small_surfaces for map @{$_->layers}, @{$self->objects};
-    
     # this will detect bridges and reverse bridges
     # and rearrange top/bottom/internal surfaces
     $status_cb->(45, "Detect bridges");
@@ -257,11 +252,11 @@ sub export_gcode {
     $_->discover_horizontal_shells for @{$self->objects};
     
     # free memory
-    @{$_->surfaces} = () for map @{$_->layers}, @{$self->objects};
+    $_->surfaces(undef) for map @{$_->layers}, @{$self->objects};
     
     # combine fill surfaces to honor the "infill every N layers" option
     $status_cb->(70, "Combining infill");
-    $_->infill_every_layers for @{$self->objects};
+    $_->combine_infill for @{$self->objects};
     
     # this will generate extrusion paths for each layer
     $status_cb->(80, "Infilling layers");
@@ -289,13 +284,13 @@ sub export_gcode {
                 my $fills = shift;
                 foreach my $obj_idx (keys %$fills) {
                     foreach my $layer_id (keys %{$fills->{$obj_idx}}) {
-                        @{$self->objects->[$obj_idx]->layers->[$layer_id]->fills} = @{$fills->{$obj_idx}{$layer_id}};
+                        $self->objects->[$obj_idx]->layers->[$layer_id]->fills($fills->{$obj_idx}{$layer_id});
                     }
                 }
             },
             no_threads_cb => sub {
                 foreach my $layer (map @{$_->layers}, @{$self->objects}) {
-                    @{$layer->fills} = $fill_maker->make_fill($layer);
+                    $layer->fills([ $fill_maker->make_fill($layer) ]);
                 }
             },
         );
@@ -308,7 +303,7 @@ sub export_gcode {
     }
     
     # free memory (note that support material needs fill_surfaces)
-    @{$_->fill_surfaces} = () for map @{$_->layers}, @{$self->objects};
+    $_->fill_surfaces(undef) for map @{$_->layers}, @{$self->objects};
     
     # make skirt
     $status_cb->(88, "Generating skirt");
@@ -436,7 +431,7 @@ sub make_skirt {
         my @layer_points = (
             (map @$_, map @{$_->expolygon}, map @{$_->slices}, @layers),
             (map @$_, map @{$_->thin_walls}, @layers),
-            (map @{$_->polyline->deserialize}, map @{$_->support_fills->paths}, grep $_->support_fills, @layers),
+            (map @{$_->unpack->polyline}, map @{$_->support_fills->paths}, grep $_->support_fills, @layers),
         );
         push @points, map move_points($_, @layer_points), @{$self->copies->[$obj_idx]};
     }
@@ -451,7 +446,7 @@ sub make_skirt {
     for (my $i = $Slic3r::skirts; $i > 0; $i--) {
         my $distance = scale ($Slic3r::skirt_distance + ($flow->spacing * $i));
         my $outline = offset([$convex_hull], $distance, $Slic3r::scaling_factor * 100, JT_ROUND);
-        push @skirt, Slic3r::ExtrusionLoop->new(
+        push @skirt, Slic3r::ExtrusionLoop->pack(
             polygon => Slic3r::Polygon->new(@{$outline->[0]}),
             role => EXTR_ROLE_SKIRT,
         );
@@ -474,7 +469,7 @@ sub make_brim {
     my $flow = $Slic3r::first_layer_flow || $Slic3r::flow;
     my $num_loops = sprintf "%.0f", $Slic3r::brim_width / $flow->width;
     for my $i (reverse 1 .. $num_loops) {
-        push @{$self->brim}, Slic3r::ExtrusionLoop->new(
+        push @{$self->brim}, Slic3r::ExtrusionLoop->pack(
             polygon => Slic3r::Polygon->new($_),
             role    => EXTR_ROLE_SKIRT,
         ) for @{Math::Clipper::offset(\@islands, $i * scale $flow->spacing)};
@@ -609,8 +604,12 @@ sub write_gcode {
             $gcode .= $gcodegen->set_tool($Slic3r::infill_extruder-1);
             $gcode .= $gcodegen->set_acceleration($Slic3r::infill_acceleration);
             for my $fill (@{ $layer->fills }) {
-                $gcode .= $gcodegen->extrude($_, 'fill') 
-                    for $fill->shortest_path($gcodegen->last_pos);
+                if ($fill->isa('Slic3r::ExtrusionPath::Collection')) {
+                    $gcode .= $gcodegen->extrude($_, 'fill') 
+                        for $fill->shortest_path($gcodegen->last_pos);
+                } else {
+                    $gcode .= $gcodegen->extrude($fill, 'fill') ;
+                }
             }
             
             # extrude support material

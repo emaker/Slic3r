@@ -1,6 +1,8 @@
 package Slic3r::ExtrusionLoop;
 use Moo;
 
+use Slic3r::Geometry qw(same_point);
+
 # the underlying Slic3r::Polygon objects holds the geometry
 has 'polygon' => (
     is          => 'rw',
@@ -13,27 +15,29 @@ has 'flow_spacing' => (is => 'rw');
 # see EXTR_ROLE_* constants in ExtrusionPath.pm
 has 'role'         => (is => 'rw', required => 1);
 
-sub BUILD {
-    my $self = shift;
-    bless $self->polygon, 'Slic3r::Polygon';
-    $self->polygon($self->polygon->serialize);
-}
+use constant PACK_FMT => 'fca*';
 
-sub deserialize {
+# class or object method
+sub pack {
     my $self = shift;
-    $self->polygon($self->polygon->deserialize);
-}
-
-sub shortest_path {
-    my $self = shift;
-    return $self;
+    my %args = @_;
+    
+    if (ref $self) {
+        %args = map { $_ => $self->$_ } qw(flow_spacing role polygon);
+    }
+    
+    my $o = \ pack PACK_FMT,
+        $args{flow_spacing} || -1,
+        $args{role}         // (die "Missing mandatory attribute 'role'"), #/
+        $args{polygon}->serialize;
+    
+    bless $o, 'Slic3r::ExtrusionLoop::Packed';
+    return $o;
 }
 
 sub split_at_index {
     my $self = shift;
     my ($index) = @_;
-
-    $self->deserialize;
 
     my @new_points = ();
     push @new_points, @{$self->polygon}[$index .. $#{$self->polygon}];
@@ -52,12 +56,10 @@ sub split_at {
     
     $point = Slic3r::Point->new($point);
     
-    $self->deserialize;
-    
     # find index of point
     my $i = -1;
     for (my $n = 0; $n <= $#{$self->polygon}; $n++) {
-        if ($point->id eq $self->polygon->[$n]->id) {
+        if (same_point($point, $self->polygon->[$n])) {
             $i = $n;
             last;
         }
@@ -84,6 +86,20 @@ sub endpoints {
 sub points {
     my $self = shift;
     return $self->polygon;
+}
+
+package Slic3r::ExtrusionLoop::Packed;
+sub unpack {
+    my $self = shift;
+    
+    my ($flow_spacing, $role, $polygon_s)
+        = unpack Slic3r::ExtrusionLoop::PACK_FMT, $$self;
+    
+    return Slic3r::ExtrusionLoop->new(
+        flow_spacing    => ($flow_spacing == -1) ? undef : $flow_spacing,
+        role            => $role,
+        polygon         => Slic3r::Polygon->deserialize($polygon_s),
+    );
 }
 
 1;
