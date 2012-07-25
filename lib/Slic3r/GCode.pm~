@@ -1,6 +1,5 @@
 package Slic3r::GCode;
 use Moo;
-use Math::Trig;
 
 use Slic3r::ExtrusionPath ':roles';
 use Slic3r::Geometry qw(scale unscale);
@@ -18,7 +17,8 @@ has 'total_extrusion_length' => (is => 'rw', default => sub {0} );
 has 'retracted'          => (is => 'rw', default => sub {1} );  # this spits out some plastic at start
 has 'lifted'             => (is => 'rw', default => sub {0} );
 has 'last_pos'           => (is => 'rw', default => sub { Slic3r::Point->new(0,0) } ); # end point of previous loop
-has 'retract_pos'           => (is => 'rw', default => sub { Slic3r::Point->new(0,0) } ); # penultimate point of previous loop
+has 'pen_pos'           => (is => 'rw', default => sub { Slic3r::Point->new(0,0) } ); # penultimate point of previous loop
+has 'retract_pos'           => (is => 'rw', default => sub { Slic3r::Point->new(0,0) } ); # 
 has 'last_speed'         => (is => 'rw', default => sub {""});
 has 'last_fan_speed'     => (is => 'rw', default => sub {0});
 has 'dec'                => (is => 'ro', default => sub { 3 } );
@@ -83,16 +83,9 @@ sub change_layer {
 sub extrude {
     my $self = shift;
     
-    #print "extrude role is $_[0]{role}";
-
-    if ($_[0]->isa('Slic3r::ExtrusionLoop')) {
-    	#print " loop\n";
-        $self->extrude_loop(@_);
-    } else {
-        $_[0]->deserialize;
-        #print " path\n";
-        $self->extrude_path($_[0],$_[1],$_[0]{role});
-    }
+    ($_[0]->isa('Slic3r::ExtrusionLoop') || $_[0]->isa('Slic3r::ExtrusionLoop::Packed'))
+        ? $self->extrude_loop(@_)
+        : $self->extrude_path(@_);
 }
 
 sub extrude_loop {
@@ -100,7 +93,7 @@ sub extrude_loop {
     my ($loop, $description) = @_;
     
     # extrude all loops ccw
-    $loop->deserialize;
+    $loop = $loop->unpack if $loop->isa('Slic3r::ExtrusionLoop::Packed');
     $loop->polygon->make_counter_clockwise if $loop->role == 10;
     
     # find the point of the loop that is closest to the current extruder position
@@ -115,7 +108,6 @@ sub extrude_loop {
     
     # split the loop at the starting point and make a path
     my $extrusion_path = $loop->split_at_index($start_index);
-    $extrusion_path->deserialize;
     
     # clip the path to avoid the extruder to get exactly on the first point of the loop;
     # if polyline was shorter than the clipping distance we'd get a null polyline, so
@@ -130,14 +122,14 @@ sub extrude_loop {
 sub extrude_path {
     my $self = shift;
     my ($path, $description, $role, $recursive) = @_;
-    #print "desc is $description";print " role is $role \n";
+
+    $path = $path->unpack if $path->isa('Slic3r::ExtrusionPath::Packed');
     $path->merge_continuous_lines;
     
     # detect arcs
     if ($Slic3r::gcode_arcs && !$recursive) {
         my $gcode = "";
         foreach my $arc_path ($path->detect_arcs) {
-            $arc_path->deserialize;
             $gcode .= $self->extrude_path($arc_path, $description, 1);
         }
         return $gcode;
@@ -149,7 +141,6 @@ sub extrude_path {
     # specified by the user *and* to the maximum distance between infill lines
     {
         my $distance_from_last_pos = $self->last_pos->distance_to($path->points->[0]) * $Slic3r::scaling_factor;
-        #print " $distance_from_last_pos \n";
         my $distance_threshold = $Slic3r::retract_before_travel;
         $distance_threshold = 2 * ($self->layer ? $self->layer->flow->width : $Slic3r::flow->width) / $Slic3r::fill_density * sqrt(2)
             if 0 && $Slic3r::fill_density > 0 && $description =~ /fill/;
@@ -158,8 +149,12 @@ sub extrude_path {
         	#print "retract req. dist pen -> last";print $self->pen_pos->distance_to($self->last_pos) * $Slic3r::scaling_factor;print "\n";
         	if (defined $self->retract_pos && defined $role && ($role == 10 || $role <= 3)) {
 	        	#jmg - retract to one extrusion width towards next thread
+	        	print "retract move ";print "$role \n";
+	        	print " from X";print unscale $self->last_pos->x;print " to Y";print unscale $self->last_pos->y;print "\n";
+	        	print " to X";print unscale $self->retract_pos->x;print " to Y";print unscale $self->retract_pos->y;print "\n";
 	            $gcode .= $self->retract(retract_move_to => $self->retract_pos);
 	        } else {
+	        	print "retract stat ";print "$role" if defined $role;print "\n";
             	$gcode .= $self->retract(travel_to => $path->points->[0]);
            	}
         }
@@ -168,6 +163,9 @@ sub extrude_path {
     # go to first point of extrusion path
     $gcode .= $self->G0($path->points->[0], undef, 0, "move to first $description point")
         if !points_coincide($self->last_pos, $path->points->[0]);
+    
+    # compensate retraction
+    $gcode .= $self->unretract if $self->retracted;
     
     my $area;  # mm^3 of extrudate per mm of tool movement 
     if ($path->role == EXTR_ROLE_BRIDGE) {
@@ -229,12 +227,12 @@ sub extrude_path {
     }
     #set retract-to pos in case it is required by the next thread. - jmg
 	my $rpos = Slic3r::Point->new(($path->points->[1]->x + $path->points->[-2]->x) / 2,($path->points->[1]->y + $path->points->[-2]->y) / 2);
-	print "rpos X";print $rpos->x;print " Y";print $rpos->y;print "\n";
-	print $path->points->[-1]->distance_to($rpos);print "\n";
+	#print "rpos X";print $rpos->x;print " Y";print $rpos->y;print "\n";
+	#print unscale $path->points->[-1]->distance_to($rpos);print "\n";
 	my $m = 2;
 	$m = $m * -1 if (defined $role && $role == 10);
-	my $h = $m * scale $self->layer->flow->width / ($path->points->[-1]->distance_to($rpos));
-	print "\$h $h\n";
+	my $h = $m * scale $self->layer->flow->width / ($path->points->[-1]->distance_to($rpos) > 0 ? $path->points->[-1]->distance_to($rpos) : 1);
+	#print "\$h $h\n";
 	my $retract_to = Slic3r::Point->new($path->points->[-1]->x + ($rpos->x - $path->points->[-1]->x) * $h, $path->points->[-1]->y + ($rpos->y - $path->points->[-1]->y) * $h);
     $self->retract_pos($retract_to);
     return $gcode;
@@ -242,7 +240,6 @@ sub extrude_path {
 
 sub retract {
     my $self = shift;
-    #print "@_\n";
     my %params = @_;
     
     return "" unless $Slic3r::retract_length > 0 
@@ -347,7 +344,7 @@ sub _G0_G1 {
         $gcode .= sprintf " X%.${dec}f Y%.${dec}f", 
             ($point->x * $Slic3r::scaling_factor) + $self->shift_x, 
             ($point->y * $Slic3r::scaling_factor) + $self->shift_y; #*
-        #$self->pen_pos($self->last_pos);
+        $self->pen_pos($self->last_pos);
         $self->last_pos($point);
     }
     if (defined $z && $z != $self->z) {
