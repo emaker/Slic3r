@@ -79,6 +79,26 @@ sub clip_end {
     }
 }
 
+sub clip_start {
+    my $self = shift;
+    my ($distance) = @_;
+    
+    while ($distance > 0) {
+        my $first_point = shift @{$self->points};
+        last if !@{$self->points};
+        
+        my $first_segment_length = $first_point->distance_to($self->points->[0]);
+        if ($first_segment_length <= $distance) {
+            $distance -= $first_segment_length;
+            next;
+        }
+        
+        my $new_point = Slic3r::Geometry::point_along_segment($first_point, $self->points->[0], $distance);
+        unshift @{$self->points}, Slic3r::Point->new($new_point);
+        $distance = 0;
+    }
+}
+
 sub clip_with_polygon {
     my $self = shift;
     my ($polygon) = @_;

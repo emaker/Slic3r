@@ -19,6 +19,7 @@ has 'lifted'             => (is => 'rw', default => sub {0} );
 has 'last_pos'           => (is => 'rw', default => sub { Slic3r::Point->new(0,0) } ); # end point of previous loop
 has 'pen_pos'           => (is => 'rw', default => sub { Slic3r::Point->new(0,0) } ); # penultimate point of previous loop
 has 'retract_pos'           => (is => 'rw', default => sub { Slic3r::Point->new(0,0) } ); # 
+has 'old_start'           => (is => 'rw', default => sub { Slic3r::Point->new(0,0) } ); # 
 has 'last_speed'         => (is => 'rw', default => sub {""});
 has 'last_fan_speed'     => (is => 'rw', default => sub {0});
 has 'dec'                => (is => 'ro', default => sub { 3 } );
@@ -95,7 +96,8 @@ sub extrude_loop {
     # extrude all loops ccw
     $loop = $loop->unpack if $loop->isa('Slic3r::ExtrusionLoop::Packed');
     #print "loop role ";print $loop->role;print "\n";
-    $loop->polygon->make_counter_clockwise if ($loop->role == 10 || $loop->role == 3);
+    $loop->polygon->make_counter_clockwise if ($loop->role == 10);
+    $loop->polygon->make_clockwise if ($loop->role == 2);
     
     # find the point of the loop that is closest to the current extruder position
     # or randomize if requested
@@ -126,6 +128,15 @@ sub extrude_path {
 
     $path = $path->unpack if $path->isa('Slic3r::ExtrusionPath::Packed');
     #print "path role ";print $path->role;print "\n";
+   	$self->old_start($path->points->[0]) if ($path->role == 0 || $path->role == 3);
+   	#if ($path->role == 0 || $path->role == 3) {
+	#   	print "old start X";print $self->old_start->x;print " Y";print $self->old_start->y ;print "\n";
+	#}
+   	#print "retract pos X";print $self->retract_pos->x;print " Y";print $self->retract_pos->y;print "\n";
+    if ($path->role == 0 || $path->role == 3 || $path->role == 10 || $path->role == 2) {
+	    $path->clip_start(scale($self->layer ? $self->layer->flow->width : $Slic3r::flow->width) * 0.6);
+	}
+    $path->clip_end(scale($self->layer ? $self->layer->flow->width : $Slic3r::flow->width) * 0.6) if ($path->role == 0 || $path->role == 3);
     $path->merge_continuous_lines;
     
     # detect arcs
@@ -228,15 +239,19 @@ sub extrude_path {
         $self->elapsed_time($self->elapsed_time + $path_time);
     }
     #set retract-to pos in case it is required by the next thread. - jmg
-	my $rpos = Slic3r::Point->new(($path->points->[1]->x + $path->points->[-2]->x) / 2,($path->points->[1]->y + $path->points->[-2]->y) / 2);
-	#print "rpos X";print $rpos->x;print " Y";print $rpos->y;print "\n";
-	#print unscale $path->points->[-1]->distance_to($rpos);print "\n";
-	my $m = 2;
-	$m = $m * -1 if (defined $path->role && ($path->role == 10 || $path->role == 3));
-	my $h = $m * scale $self->layer->flow->width / ($path->points->[-1]->distance_to($rpos) > $self->layer->flow->width ? $path->points->[-1]->distance_to($rpos) : 1);
-	#print $h;print " role is ";print $path->role;print " \n";
-	my $retract_to = Slic3r::Point->new($path->points->[-1]->x + ($rpos->x - $path->points->[-1]->x) * $h, $path->points->[-1]->y + ($rpos->y - $path->points->[-1]->y) * $h);
-    $self->retract_pos($retract_to);
+	#my $rpos = Slic3r::Point->new(($path->points->[1]->x + $path->points->[-2]->x) / 2,($path->points->[1]->y + $path->points->[-2]->y) / 2);
+	##print "rpos X";print $rpos->x;print " Y";print $rpos->y;print "\n";
+	##print unscale $path->points->[-1]->distance_to($rpos);print "\n";
+	#my $m = 2;
+	#$m = $m * -1 if (defined $path->role && ($path->role == 10 || $path->role == 3));
+	#my $h = $m * scale $self->layer->flow->width / ($path->points->[-1]->distance_to($rpos) > $self->layer->flow->width ? $path->points->[-1]->distance_to($rpos) : 1);
+	##print $h;print " role is ";print $path->role;print " \n";
+	#my $retract_to = Slic3r::Point->new($path->points->[-1]->x + ($rpos->x - $path->points->[-1]->x) * $h, $path->points->[-1]->y + ($rpos->y - $path->points->[-1]->y) * $h);
+    if ($path->role == 10 || $path->role == 2) {
+   		$self->retract_pos($self->old_start);
+   	#} else {
+   	#	$self->retract_pos($retract_to);
+   	}
     $self->prev_role($path->role);
     return $gcode;
 }
