@@ -586,6 +586,7 @@ sub write_gcode {
             
             # retract explicitely because changing the shift_[xy] properties below
             # won't always trigger the automatic retraction
+            $gcode .= "dude";
             $gcode .= $gcodegen->retract;
             
             $gcodegen->shift_x($shift[X] + unscale $copy->[X]);
@@ -594,9 +595,9 @@ sub write_gcode {
             # extrude perimeters
             $gcode .= $gcodegen->set_tool($Slic3r::perimeter_extruder-1);
             for (@{ $layer->perimeters }) {
-            	#$gcode .= $gcodegen->extrude($_, 'perimeter');
+            	$gcode .= $gcodegen->extrude($_, 'perimeter');
             	#print "perimeter role is ";print $_->role;print "\n";
-            	$gcode .= $gcodegen->extrude($_, $_{role},'perimeter');
+            	#$gcode .= $gcodegen->extrude($_, $_->role);
             }
             #$gcode .= $gcodegen->extrude($_, 'perimeter') for @{ $layer->perimeters };
             

@@ -309,15 +309,16 @@ sub make_perimeters {
         
         # do holes, then contours starting from innermost one
         for (reverse 0 .. $#holes) {
-        	my $role = $is_external{$_} ? EXTR_ROLE_EXTERNAL_PERIMETER : EXTR_ROLE_HOLE;
-        	$self->add_perimeter($holes[$_], $role);
-            print "add hole role is $role \n";        	
+        	my $role = $is_external{$_} ? EXTR_ROLE_HOLE : EXTR_ROLE_CONTOUR_INTERNAL_PERIMETER;
+        	$self->_add_perimeter($holes[$_], $role);
+            #print "add hole role is $role \n";        	
         }
             
         for my $depth (reverse 0 .. $#$island) {
             my $role = $depth == $#$island ? EXTR_ROLE_CONTOUR_INTERNAL_PERIMETER
                 : $depth == 0 ? EXTR_ROLE_EXTERNAL_PERIMETER
                 : EXTR_ROLE_PERIMETER;
+            #print "add perimter role is $role \n";        	
             $self->_add_perimeter($_, $role) for map $_->contour, @{$island->[$depth]};
         }
     }
