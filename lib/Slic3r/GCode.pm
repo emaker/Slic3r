@@ -212,7 +212,7 @@ sub extrude_path {
 	}
     
     # extrude arc or line
-    my $Role =  (($path->role <= 3 || $path->role == 10) && $path->length <= $Slic3r::small_perimeter_length) ? $path->role : EXTR_ROLE_SMALLPERIMETER;
+    my $Role =  (($path->role <= 3 || $path->role == 10) && $path->length <= &$Slic3r::SMALL_PERIMETER_LENGTH) ? $path->role : EXTR_ROLE_SMALLPERIMETER;
     $self->speed( $role_speeds{$path->role} || die "Unknown role: " . $Role );
     my $path_length = 0;
     if ($path->isa('Slic3r::ExtrusionPath::Arc')) {
@@ -320,7 +320,7 @@ sub unretract {
     }
     
     $self->speed('retract');
-    $gcode .= $self->G1(defined $params{unretract_move_to} ? $params{unretract_move_to} : undef, undef, ($Slic3r::Config->retract_length + $Slic3r::retract_restart_extra), 
+    $gcode .= $self->G1(defined $params{unretract_move_to} ? $params{unretract_move_to} : undef, undef, ($Slic3r::Config->retract_length + $Slic3r::Config->retract_restart_extra), 
         "compensate retraction");
     
     return $gcode;

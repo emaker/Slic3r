@@ -206,7 +206,7 @@ sub make_perimeters {
                 # revert the compensation done in make_surfaces() and get the actual radius
                 # of the hole
                 my $radius = ($circumference / PI / 2) - scale $self->perimeter_flow->spacing/2;
-                my $new_radius = (scale($self->perimeter_flow->width * 0.5) + sqrt((scale($self->perimeters_flow->width)**2) + (4*($radius**2)))) / 2;
+                my $new_radius = (scale($self->perimeter_flow->width * 0.5) + sqrt((scale($self->perimeter_flow->width)**2) + (4*($radius**2)))) / 2;
                 # holes are always turned to contours, so reverse point order before and after
                 $hole->reverse;
                 my @offsetted = $hole->offset(+ ($new_radius - $radius));
