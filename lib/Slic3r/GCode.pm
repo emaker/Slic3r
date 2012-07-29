@@ -52,7 +52,7 @@ my %role_speeds = (
     &EXTR_ROLE_BRIDGE                       => 'bridge',
     &EXTR_ROLE_SKIRT                        => 'perimeter',
     &EXTR_ROLE_SUPPORTMATERIAL              => 'perimeter',
-    &EXTR_ROLE_HOLE                         => 'hole',
+    &EXTR_ROLE_HOLE                         => 'perimeter',
 );
 
 use Slic3r::Geometry qw(points_coincide PI X Y);
@@ -125,8 +125,12 @@ sub extrude_loop {
 sub extrude_path {
     my $self = shift;
     my ($path, $description, $recursive) = @_;
-    
+
     $path = $path->unpack if $path->isa('Slic3r::ExtrusionPath::Packed');
+    
+    #if extrude_path is shorter than one extrusion width, ignore it
+    return '' if $path->polyline->length < scale($self->layer ? $self->layer->flow->width : $Slic3r::flow->width);
+    
     #print "path role ";print $path->role;print "\n";
    	$self->old_start($path->points->[0]) if ($path->role == 0 || $path->role == 3);
    	#if ($path->role == 0 || $path->role == 3) {
@@ -134,9 +138,9 @@ sub extrude_path {
 	#}
    	#print "retract pos X";print $self->retract_pos->x;print " Y";print $self->retract_pos->y;print "\n";
     if ($path->role == 0 || $path->role == 3 || $path->role == 10 || $path->role == 2) {
-	    $path->clip_start(scale($self->layer ? $self->layer->flow->width : $Slic3r::flow->width) * 0.6);
+	    $path->clip_start(scale($self->layer ? $self->layer->flow->width : $Slic3r::flow->width) * 0.5);
 	}
-    $path->clip_end(scale($self->layer ? $self->layer->flow->width : $Slic3r::flow->width) * 0.6) if ($path->role == 0 || $path->role == 3);
+    $path->clip_end(scale($self->layer ? $self->layer->flow->width : $Slic3r::flow->width) * 0.5) if ($path->role == 0 || $path->role == 3);
     $path->merge_continuous_lines;
     
     # detect arcs
@@ -212,8 +216,8 @@ sub extrude_path {
 	}
     
     # extrude arc or line
-    my $Role =  (($path->role <= 3 || $path->role == 10) && $path->length <= &$Slic3r::SMALL_PERIMETER_LENGTH) ? $path->role : EXTR_ROLE_SMALLPERIMETER;
-    $self->speed( $role_speeds{$path->role} || die "Unknown role: " . $Role );
+    my $Role =  (($path->role <= 3 || $path->role == 10) && $path->length <= &Slic3r::SMALL_PERIMETER_LENGTH) ? $path->role : EXTR_ROLE_SMALLPERIMETER;
+    $self->speed( $role_speeds{$Role} || die "Unknown role: " . $Role );
     my $path_length = 0;
     if ($path->isa('Slic3r::ExtrusionPath::Arc')) {
         $path_length = $path->length;
@@ -287,7 +291,7 @@ sub retract {
         $gcode .= $self->G0(@$travel);
     } else {
     	#print "retract move\n" if defined $params{retract_move_to};
-    	$retract = [$params{retract_move_to}, undef, -$Slic3r::retract_length, "retract"] if (defined $params{retract_move_to});
+    	$retract = [$params{retract_move_to}, undef, -$Slic3r::Config->retract_length, "retract"] if (defined $params{retract_move_to});
         $gcode .= $self->G1(@$retract);
         if (defined $params{move_z} && $Slic3r::Config->retract_lift > 0) {
             my $travel = [undef, $params{move_z} + $Slic3r::Config->retract_lift, 0, 'move to next layer (' . $self->layer->id . ') and lift'];
