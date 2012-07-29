@@ -67,7 +67,9 @@ sub clip_end {
         my $last_point = pop @{$self->points};
         last if !@{$self->points};
         
+        print "end\n";
         my $last_segment_length = $last_point->distance_to($self->points->[-1]);
+        print $last_segment_length;print "end_\n";
         if ($last_segment_length <= $distance) {
             $distance -= $last_segment_length;
             next;
@@ -87,13 +89,15 @@ sub clip_start {
         my $first_point = shift @{$self->points};
         last if !@{$self->points};
         
-        my $first_segment_length = $first_point->distance_to($self->points->[1]);
+        print "start\n";
+        my $first_segment_length = $first_point->distance_to($self->points->[0]);
+        print $first_segment_length;print "start_\n";
         if ($first_segment_length <= $distance) {
             $distance -= $first_segment_length;
             next;
         }
         
-        my $new_point = Slic3r::Geometry::point_along_segment($first_point, $self->points->[1], $distance);
+        my $new_point = Slic3r::Geometry::point_along_segment($first_point, $self->points->[0], $distance);
         unshift @{$self->points}, Slic3r::Point->new($new_point);
         $distance = 0;
     }
@@ -180,7 +184,7 @@ sub detect_arcs {
     my ($max_angle, $len_epsilon) = @_;
     
     $max_angle = deg2rad($max_angle || 15);
-    $len_epsilon ||= 10 / $Slic3r::scaling_factor;
+    $len_epsilon ||= 10 / &Slic3r::SCALING_FACTOR;
     
     my @points = @{$self->points};
     my @paths = ();
