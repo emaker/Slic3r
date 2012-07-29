@@ -483,13 +483,11 @@ sub export_gcode {
     }
     
     $self->statusbar->StartBusy;
-    my $skeinpanel = $self->skeinpanel;
+    $self->{print}->config($self->skeinpanel->config);  # set this before spawning the thread because ->config needs GetParent and it's not available there
     if ($Slic3r::have_threads) {
         $self->{export_thread} = threads->create(sub {
             $self->export_gcode2(
                 $self->{output_file},
-                panel           => $self->skeinpanel,
-                $skeinpanel,
                 progressbar     => sub { Wx::PostEvent($self, Wx::PlThreadEvent->new(-1, $PROGRESS_BAR_EVENT, shared_clone([@_]))) },
                 message_dialog  => sub { Wx::PostEvent($self, Wx::PlThreadEvent->new(-1, $MESSAGE_DIALOG_EVENT, shared_clone([@_]))) },
                 on_completed    => sub { Wx::PostEvent($self, Wx::PlThreadEvent->new(-1, $EXPORT_COMPLETED_EVENT, shared_clone([@_]))) },
@@ -510,7 +508,6 @@ sub export_gcode {
     } else {
         $self->export_gcode2(
             $self->{output_file},
-            $skeinpanel,
             progressbar => sub {
                 my ($percent, $message) = @_;
                 $self->statusbar->SetProgress($percent);
@@ -525,7 +522,7 @@ sub export_gcode {
 
 sub export_gcode2 {
     my $self = shift;
-    my ($output_file, $skeinpanel, %params) = @_;
+    my ($output_file, %params) = @_;
     $Slic3r::Geometry::Clipper::clipper = Math::Clipper->new;
     local $SIG{'KILL'} = sub {
         Slic3r::debugf "Exporting cancelled; exiting thread...\n";
@@ -534,7 +531,6 @@ sub export_gcode2 {
     
     eval {
         my $print = $self->{print};
-        $print->config($skeinpanel->config);
         $print->config->validate;
         $print->validate;
         
@@ -563,7 +559,12 @@ sub export_gcode2 {
             $message .= sprintf " %d minutes and", $minutes if $minutes;
             $message .= sprintf " %.1f seconds", $print->processing_time - $minutes*60;
         }
-        $message .= ".";
+        $message .= ".\n";
+
+        # Filament required
+        $message .= sprintf "Filament required: %.1fmm (%.1fcm3).",
+            $print->total_extrusion_length, $print->total_extrusion_volume;
+
         $params{on_completed}->($message);
         $print->cleanup;
     };
