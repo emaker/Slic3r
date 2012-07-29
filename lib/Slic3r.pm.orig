@@ -50,6 +50,7 @@ use Slic3r::Surface;
 use Slic3r::TriangleMesh;
 eval "use Slic3r::Build";
 
+<<<<<<< HEAD
 our $threads            = $have_threads ? 2 : 1;
 
 # miscellaneous options
@@ -79,15 +80,7 @@ our $first_layer_bed_temperature = $bed_temperature;
 
 # extruders
 our $extruders              = [];
-<<<<<<< HEAD
-our $nozzle_diameter        = [0.5,0.8];
-our $filament_diameter      = [1.7,1.7];    # mm
-our $extrusion_multiplier   = [1,1];
-our $temperature            = [200,200];
-our $first_layer_temperature= [];
-=======
 our $nozzle_diameter        = [0.5];
->>>>>>> master
 
 # extruder mapping (1-based indexes)
 our $perimeter_extruder         = 1;
@@ -121,7 +114,7 @@ our $infill_every_layers    = 1;
 
 # flow options
 our $extrusion_width                = 0;
-our $first_layer_extrusion_width    = '200%';
+our $first_layer_extrusion_width    = 0;
 our $perimeter_extrusion_width      = 0;
 our $infill_extrusion_width         = 0;
 our $support_material_extrusion_width = 0;
@@ -195,16 +188,29 @@ our $extruder_clearance_height  = 20;     # mm
 
 our $Defaults = Slic3r::Config->current;
 our $Settings = { presets => {} };  # application settings
+=======
+use constant SCALING_FACTOR         => 0.000001;
+use constant RESOLUTION             => 0.01;
+use constant OVERLAP_FACTOR         => 0.5;
+use constant SMALL_PERIMETER_LENGTH => (6.5 / SCALING_FACTOR) * 2 * PI;
+
+# The following variables hold the objects used throughout the slicing
+# process.  They should belong to the Print object, but we are keeping 
+# them here because it makes accessing them slightly faster.
+our $Config;
+our $extruders;
+our ($flow, $first_layer_flow, $perimeter_flow, $infill_flow, $support_material_flow);
+>>>>>>> master
 
 sub parallelize {
     my %params = @_;
     
-    if (!$params{disable} && $Slic3r::have_threads && $Slic3r::threads > 1) {
+    if (!$params{disable} && $Slic3r::have_threads && $Config->threads > 1) {
         my $q = Thread::Queue->new;
-        $q->enqueue(@{ $params{items} }, (map undef, 1..$Slic3r::threads));
+        $q->enqueue(@{ $params{items} }, (map undef, 1..$Config->threads));
         
         my $thread_cb = sub { $params{thread_cb}->($q) };
-        foreach my $th (map threads->create($thread_cb), 1..$Slic3r::threads) {
+        foreach my $th (map threads->create($thread_cb), 1..$Config->threads) {
             $params{collect_cb}->($th->join);
         }
     } else {
