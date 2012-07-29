@@ -487,6 +487,7 @@ sub export_gcode {
         $self->{export_thread} = threads->create(sub {
             $self->export_gcode2(
                 $self->{output_file},
+                panel           => $self->skeinpanel,
                 progressbar     => sub { Wx::PostEvent($self, Wx::PlThreadEvent->new(-1, $PROGRESS_BAR_EVENT, shared_clone([@_]))) },
                 message_dialog  => sub { Wx::PostEvent($self, Wx::PlThreadEvent->new(-1, $MESSAGE_DIALOG_EVENT, shared_clone([@_]))) },
                 on_completed    => sub { Wx::PostEvent($self, Wx::PlThreadEvent->new(-1, $EXPORT_COMPLETED_EVENT, shared_clone([@_]))) },
@@ -507,6 +508,7 @@ sub export_gcode {
     } else {
         $self->export_gcode2(
             $self->{output_file},
+            panel           => $self->skeinpanel,
             progressbar => sub {
                 my ($percent, $message) = @_;
                 $self->statusbar->SetProgress($percent);
@@ -530,7 +532,7 @@ sub export_gcode2 {
     
     eval {
         my $print = $self->{print};
-        $print->config($self->skeinpanel->config);
+        $print->config($params{panel}->config);
         $print->config->validate;
         $print->validate;
         
