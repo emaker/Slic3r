@@ -128,15 +128,10 @@ sub extrude_path {
 
     $path = $path->unpack if $path->isa('Slic3r::ExtrusionPath::Packed');
     
-    #if extrude_path is shorter than one extrusion width, ignore it
-    return '' if $path->polyline->length < scale($self->layer ? $self->layer->flow->width : $Slic3r::flow->width);
+    #if extrude_path is shorter than two extrusion widths, ignore it
+    return '' if $path->polyline->length < scale ($self->layer ? $self->layer->flow->width : $Slic3r::flow->width) * 3;
     
-    #print "path role ";print $path->role;print "\n";
    	$self->old_start($path->points->[0]) if ($path->role == 0 || $path->role == 3);
-   	#if ($path->role == 0 || $path->role == 3) {
-	#   	print "old start X";print $self->old_start->x;print " Y";print $self->old_start->y ;print "\n";
-	#}
-   	#print "retract pos X";print $self->retract_pos->x;print " Y";print $self->retract_pos->y;print "\n";
     if ($path->role == 0 || $path->role == 3 || $path->role == 10 || $path->role == 2) {
 	    $path->clip_start(scale($self->layer ? $self->layer->flow->width : $Slic3r::flow->width) * 0.5);
 	}
@@ -252,7 +247,13 @@ sub extrude_path {
 	##print $h;print " role is ";print $path->role;print " \n";
 	#my $retract_to = Slic3r::Point->new($path->points->[-1]->x + ($rpos->x - $path->points->[-1]->x) * $h, $path->points->[-1]->y + ($rpos->y - $path->points->[-1]->y) * $h);
     if ($path->role == 10 || $path->role == 2) {
-   		$self->retract_pos($self->old_start);
+   		#$self->retract_pos($self->old_start);
+   		if($path->points->[-1]->distance_to($self->old_start) <= scale ($self->layer ? $self->layer->flow->spacing : $Slic3r::flow->spacing) * 3) {
+   			$self->retract_pos($self->old_start);
+   		} else {
+   			my $h = scale ($self->layer ? $self->layer->flow->spacing : $Slic3r::flow->spacing) / $path->points->[-1]->distance_to($self->old_start);
+   			$self->retract_pos(Slic3r::Point->new($path->points->[-1]->x + ($self->old_start->x - $path->points->[-1]->x) * $h, $path->points->[-1]->y + ($self->old_start->y - $path->points->[-1]->y) * $h));
+   		}
    	#} else {
    	#	$self->retract_pos($retract_to);
    	}
@@ -363,7 +364,7 @@ sub _G0_G1 {
     my ($gcode, $point, $z, $e, $comment) = @_;
     my $dec = $self->dec;
     
-    if ($point) {
+    if ($point && $point->distance_to($self->last_pos) > scale 0.05) {
         $gcode .= sprintf " X%.${dec}f Y%.${dec}f", 
             ($point->x * &Slic3r::SCALING_FACTOR) + $self->shift_x, 
             ($point->y * &Slic3r::SCALING_FACTOR) + $self->shift_y; #**
