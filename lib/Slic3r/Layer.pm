@@ -307,10 +307,10 @@ sub make_perimeters {
             }
         }
         
-        # do holes, then contours starting from innermost one
+        # do holes, then contours starting from outermost one
         $self->_add_perimeter($holes[$_], $is_external{$_} ? EXTR_ROLE_EXTERNAL_PERIMETER : undef)
-            for reverse 0 .. $#holes;
-        for my $depth (reverse 0 .. $#$island) {
+        	for 0 .. $#holes;
+        for my $depth (0 .. $#$island) {
             my $role = $depth == $#$island ? EXTR_ROLE_CONTOUR_INTERNAL_PERIMETER
                 : $depth == 0 ? EXTR_ROLE_EXTERNAL_PERIMETER
                 : EXTR_ROLE_PERIMETER;
@@ -342,7 +342,7 @@ sub _add_perimeter {
     return unless $polygon->is_printable($self->perimeter_flow->width);
     push @{ $self->perimeters }, Slic3r::ExtrusionLoop->pack(
         polygon         => $polygon,
-        role            => (abs($polygon->length) <= &Slic3r::SMALL_PERIMETER_LENGTH) ? EXTR_ROLE_SMALLPERIMETER : ($role // EXTR_ROLE_PERIMETER),  #/
+	        role            => (abs($polygon->length) <= &Slic3r::SMALL_PERIMETER_LENGTH) ? EXTR_ROLE_SMALLPERIMETER : ($role // EXTR_ROLE_PERIMETER),  #/
         flow_spacing    => $self->perimeter_flow->spacing,
     );
 }
