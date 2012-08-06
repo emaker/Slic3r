@@ -133,7 +133,7 @@ sub extrude_path {
     
    	$self->old_start($path->points->[0]) if ($path->role == 0 || $path->role == 3);
     if ($path->role == 0 || $path->role == 3 || $path->role == 10 || $path->role == 2) {
-	    $path->clip_start(scale($self->layer ? $self->layer->flow->width : $Slic3r::flow->width) * 0.5);
+	    $path->clip_start(scale($self->layer ? $self->layer->flow->width : $Slic3r::flow->width) * 0.55);
 	}
     $path->clip_end(scale($self->layer ? $self->layer->flow->width : $Slic3r::flow->width) * 0.5) if ($path->role == 0 || $path->role == 3);
     $path->merge_continuous_lines;
@@ -249,9 +249,12 @@ sub extrude_path {
     if ($path->role == 10 || $path->role == 2) {
    		#$self->retract_pos($self->old_start);
    		if($path->points->[-1]->distance_to($self->old_start) <= scale ($self->layer ? $self->layer->flow->spacing : $Slic3r::flow->spacing) * 3) {
-   			$self->retract_pos($self->old_start);
+   			#$self->retract_pos($self->old_start);
+   			my $m = 2;
+   			$self->retract_pos(Slic3r::Point->new( ($self->old_start->x - $path->points->[-1]->x) * $m +  $path->points->[-1]->x, ($self->old_start->y - $path->points->[-1]->y) * $m +  $path->points->[-1]->y) );
    		} else {
    			my $h = scale ($self->layer ? $self->layer->flow->spacing : $Slic3r::flow->spacing) / $path->points->[-1]->distance_to($self->old_start);
+   			print "$h\n";
    			$self->retract_pos(Slic3r::Point->new($path->points->[-1]->x + ($self->old_start->x - $path->points->[-1]->x) * $h, $path->points->[-1]->y + ($self->old_start->y - $path->points->[-1]->y) * $h));
    		}
    	#} else {
