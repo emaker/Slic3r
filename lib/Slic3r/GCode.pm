@@ -133,7 +133,7 @@ sub extrude_path {
     
    	$self->old_start($path->points->[0]) if ($path->role == 0 || $path->role == 3);
     if ($path->role == 0 || $path->role == 3 || $path->role == 10 || $path->role == 2) {
-	    $path->clip_start(scale($self->layer ? $self->layer->flow->width : $Slic3r::flow->width) * 0.55);
+	    $path->clip_start(scale($self->layer ? $self->layer->flow->width : $Slic3r::flow->width) * 0.5);
 	}
     $path->clip_end(scale($self->layer ? $self->layer->flow->width : $Slic3r::flow->width) * 0.5) if ($path->role == 0 || $path->role == 3);
     $path->merge_continuous_lines;
@@ -214,11 +214,19 @@ sub extrude_path {
     my $Role =  (($path->role <= 3 || $path->role == 10) && $path->length <= &Slic3r::SMALL_PERIMETER_LENGTH) ? $path->role : EXTR_ROLE_SMALLPERIMETER;
     $self->speed( $role_speeds{$Role} || die "Unknown role: " . $Role );
     my $path_length = 0;
+    #my $e_ = 0;
+    #my $line_length = 0;
+    my $path_end = Slic3r::Point->new(0,0);
     if ($path->isa('Slic3r::ExtrusionPath::Arc')) {
         $path_length = $path->length;
         $gcode .= $self->G2_G3($path->points->[-1], $path->orientation, 
             $path->center, $e * unscale $path_length, $description);
     } else {
+		if($path->role == 3 || $path->role == 0) {
+			my $d = scale ($self->layer ? $self->layer->flow->spacing : $Slic3r::flow->spacing) * 1.5;
+			$path_end=Slic3r::Point->new($path->points->[-1]);
+			$path->clip_end($d);
+		}
         foreach my $line ($path->lines) {
             my $line_length = $line->length;
             $path_length += $line_length;
@@ -226,6 +234,9 @@ sub extrude_path {
             $gcode .= $self->G1($line->b, undef, $e_ * unscale $line_length, $description . $path->role);
             $first_e = -1;
         }
+        if ($path->role == 3 || $path->role == 0) {
+	        $gcode .= $self->G0($path_end, undef, undef, $description . $path->role);
+	    }
     }
     
     if ($Slic3r::Config->cooling) {
@@ -237,28 +248,15 @@ sub extrude_path {
         }
         $self->elapsed_time($self->elapsed_time + $path_time);
     }
-    #set retract-to pos in case it is required by the next thread. - jmg
-	#my $rpos = Slic3r::Point->new(($path->points->[1]->x + $path->points->[-2]->x) / 2,($path->points->[1]->y + $path->points->[-2]->y) / 2);
-	##print "rpos X";print $rpos->x;print " Y";print $rpos->y;print "\n";
-	##print unscale $path->points->[-1]->distance_to($rpos);print "\n";
-	#my $m = 2;
-	#$m = $m * -1 if (defined $path->role && ($path->role == 10 || $path->role == 3));
-	#my $h = $m * scale $self->layer->flow->width / ($path->points->[-1]->distance_to($rpos) > $self->layer->flow->width ? $path->points->[-1]->distance_to($rpos) : 1);
-	##print $h;print " role is ";print $path->role;print " \n";
-	#my $retract_to = Slic3r::Point->new($path->points->[-1]->x + ($rpos->x - $path->points->[-1]->x) * $h, $path->points->[-1]->y + ($rpos->y - $path->points->[-1]->y) * $h);
     if ($path->role == 10 || $path->role == 2) {
-   		#$self->retract_pos($self->old_start);
    		if($path->points->[-1]->distance_to($self->old_start) <= scale ($self->layer ? $self->layer->flow->spacing : $Slic3r::flow->spacing) * 3) {
-   			#$self->retract_pos($self->old_start);
    			my $m = 2;
    			$self->retract_pos(Slic3r::Point->new( ($self->old_start->x - $path->points->[-1]->x) * $m +  $path->points->[-1]->x, ($self->old_start->y - $path->points->[-1]->y) * $m +  $path->points->[-1]->y) );
    		} else {
    			my $h = scale ($self->layer ? $self->layer->flow->spacing : $Slic3r::flow->spacing) / $path->points->[-1]->distance_to($self->old_start);
-   			print "$h\n";
+   			#print "$h\n";
    			$self->retract_pos(Slic3r::Point->new($path->points->[-1]->x + ($self->old_start->x - $path->points->[-1]->x) * $h, $path->points->[-1]->y + ($self->old_start->y - $path->points->[-1]->y) * $h));
    		}
-   	#} else {
-   	#	$self->retract_pos($retract_to);
    	}
     $self->prev_role($path->role);
     return $gcode;
