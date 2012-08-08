@@ -96,8 +96,8 @@ sub extrude_loop {
     # extrude all loops ccw
     $loop = $loop->unpack if $loop->isa('Slic3r::ExtrusionLoop::Packed');
     #print "loop role ";print $loop->role;print "\n";
-    $loop->polygon->make_counter_clockwise if ($loop->role == 10);
-    $loop->polygon->make_clockwise if ($loop->role == 2);
+    #$loop->polygon->make_counter_clockwise if ($loop->role == 10);
+    #$loop->polygon->make_clockwise if ($loop->role == 2);
     
     # find the point of the loop that is closest to the current extruder position
     # or randomize if requested
@@ -227,14 +227,19 @@ sub extrude_path {
 			$path_end=Slic3r::Point->new($path->points->[-1]);
 			$path->clip_end($d);
 		}
+		if($path->role == 10 || $path->role == 2) {
+			my $d = scale ($self->layer ? $self->layer->flow->spacing : $Slic3r::flow->spacing) * 0.5;
+			$path_end=Slic3r::Point->new($path->points->[-1]);
+			$path->clip_end($d);
+		}
         foreach my $line ($path->lines) {
             my $line_length = $line->length;
             $path_length += $line_length;
             my $e_ = $first_e >= 0 ? $first_e : $e;
-            $gcode .= $self->G1($line->b, undef, $e_ * unscale $line_length, $description . $path->role);
+            $gcode .= $self->G1($line->b, undef, $e_ * unscale $line_length, $description . $path->role) if unscale $line_length > 0.05;
             $first_e = -1;
         }
-        if ($path->role == 3 || $path->role == 0) {
+        if ($path->role == 3 || $path->role == 0 || $path->role == 10 || $path->role == 2) {
 	        $gcode .= $self->G0($path_end, undef, undef, $description . $path->role);
 	    }
     }
@@ -250,7 +255,7 @@ sub extrude_path {
     }
     if ($path->role == 10 || $path->role == 2) {
    		if($path->points->[-1]->distance_to($self->old_start) <= scale ($self->layer ? $self->layer->flow->spacing : $Slic3r::flow->spacing) * 3) {
-   			my $m = 2;
+   			my $m = 1.0;
    			$self->retract_pos(Slic3r::Point->new( ($self->old_start->x - $path->points->[-1]->x) * $m +  $path->points->[-1]->x, ($self->old_start->y - $path->points->[-1]->y) * $m +  $path->points->[-1]->y) );
    		} else {
    			my $h = scale ($self->layer ? $self->layer->flow->spacing : $Slic3r::flow->spacing) / $path->points->[-1]->distance_to($self->old_start);
@@ -365,7 +370,8 @@ sub _G0_G1 {
     my ($gcode, $point, $z, $e, $comment) = @_;
     my $dec = $self->dec;
     
-    if ($point && $point->distance_to($self->last_pos) > scale 0.05) {
+    #if ($point && $point->distance_to($self->last_pos) > scale 0.05) {
+    if ($point) {
         $gcode .= sprintf " X%.${dec}f Y%.${dec}f", 
             ($point->x * &Slic3r::SCALING_FACTOR) + $self->shift_x, 
             ($point->y * &Slic3r::SCALING_FACTOR) + $self->shift_y; #**
