@@ -191,6 +191,7 @@ sub extrude_path {
     
     # calculate extrusion length per distance unit
     my $e = $self->extruder->e_per_mm3 * $area;
+    #$e *= 0.6 if $path->role == EXTR_ROLE_SUPPORTMATERIAL && $self->layer->id > 0;
     
     # compensate retraction
 	my $first_e = -1;
@@ -214,8 +215,6 @@ sub extrude_path {
     my $Role =  (($path->role <= 3 || $path->role == 10) && $path->length <= &Slic3r::SMALL_PERIMETER_LENGTH) ? $path->role : EXTR_ROLE_SMALLPERIMETER;
     $self->speed( $role_speeds{$Role} || die "Unknown role: " . $Role );
     my $path_length = 0;
-    #my $e_ = 0;
-    #my $line_length = 0;
     my $path_end = Slic3r::Point->new(0,0);
     if ($path->isa('Slic3r::ExtrusionPath::Arc')) {
         $path_length = $path->length;
