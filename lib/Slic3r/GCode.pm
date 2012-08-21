@@ -96,8 +96,8 @@ sub extrude_loop {
     # extrude all loops ccw
     $loop = $loop->unpack if $loop->isa('Slic3r::ExtrusionLoop::Packed');
     #print "loop role ";print $loop->role;print "\n";
-    #$loop->polygon->make_counter_clockwise if ($loop->role == 10);
-    #$loop->polygon->make_clockwise if ($loop->role == 2);
+    $loop->polygon->make_counter_clockwise if ($loop->role == 10);
+    $loop->polygon->make_clockwise if ($loop->role == 2);
     
     # find the point of the loop that is closest to the current extruder position
     # or randomize if requested
@@ -128,8 +128,8 @@ sub extrude_path {
 
     $path = $path->unpack if $path->isa('Slic3r::ExtrusionPath::Packed');
     
-    #if extrude_path is shorter than two extrusion widths, ignore it
-    return '' if $path->polyline->length < scale ($self->layer ? $self->layer->flow->width : $Slic3r::flow->width) * 3;
+    #if extrude_path is shorter than 2 extrusion widths, ignore it
+    return '' if $path->polyline->length < scale ($self->layer ? $self->layer->flow->width : $Slic3r::flow->width) * 2;
     
    	$self->old_start($path->points->[0]) if ($path->role == 0 || $path->role == 3);
     if ($path->role == 0 || $path->role == 3 || $path->role == 10 || $path->role == 2) {
@@ -226,11 +226,11 @@ sub extrude_path {
 			$path_end=Slic3r::Point->new($path->points->[-1]);
 			$path->clip_end($d);
 		}
-		if($path->role == 10 || $path->role == 2) {
-			my $d = scale ($self->layer ? $self->layer->flow->spacing : $Slic3r::flow->spacing) * 0.5;
-			$path_end=Slic3r::Point->new($path->points->[-1]);
-			$path->clip_end($d);
-		}
+		#if($path->role == 10 || $path->role == 2) {
+		#	my $d = scale ($self->layer ? $self->layer->flow->spacing : $Slic3r::flow->spacing) * 0.5;
+		#	$path_end=Slic3r::Point->new($path->points->[-1]);
+		#	$path->clip_end($d);
+		#}
         foreach my $line ($path->lines) {
             my $line_length = $line->length;
             $path_length += $line_length;
@@ -238,7 +238,8 @@ sub extrude_path {
             $gcode .= $self->G1($line->b, undef, $e_ * unscale $line_length, $description . $path->role) if unscale $line_length > 0.05;
             $first_e = -1;
         }
-        if ($path->role == 3 || $path->role == 0 || $path->role == 10 || $path->role == 2) {
+        #if ($path->role == 3 || $path->role == 0 || $path->role == 10 || $path->role == 2) {
+        if ($path->role == 3 || $path->role == 0) {
 	        $gcode .= $self->G0($path_end, undef, undef, $description . $path->role);
 	    }
     }
@@ -252,6 +253,7 @@ sub extrude_path {
         }
         $self->elapsed_time($self->elapsed_time + $path_time);
     }
+    #define position to retract to
     if ($path->role == 10 || $path->role == 2) {
    		if($path->points->[-1]->distance_to($self->old_start) <= scale ($self->layer ? $self->layer->flow->spacing : $Slic3r::flow->spacing) * 3) {
    			my $m = 1.0;
