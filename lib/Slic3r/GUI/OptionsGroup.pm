@@ -76,7 +76,7 @@ sub BUILD {
         if (!$self->no_labels) {
             $label = Wx::StaticText->new($self->parent, -1, "$opt->{label}:", wxDefaultPosition, [$self->label_width, -1]);
             $label->Wrap($self->label_width) ;  # needed to avoid Linux/GTK bug
-            $grid_sizer->Add($label);
+            $grid_sizer->Add($label, 0, wxALIGN_CENTER_VERTICAL, 0);
         }
         
         my $field;
@@ -86,7 +86,7 @@ sub BUILD {
             my $size = Wx::Size->new($opt->{width} || -1, $opt->{height} || -1);
             
             $field = $opt->{type} eq 'i'
-                ? Wx::SpinCtrl->new($self->parent, -1, $opt->{default}, wxDefaultPosition, $size, $style, $opt->{min} || 0, $opt->{max} || 100, $opt->{default})
+                ? Wx::SpinCtrl->new($self->parent, -1, $opt->{default}, wxDefaultPosition, $size, $style, $opt->{min} || 0, $opt->{max} || 2147483647, $opt->{default})
                 : Wx::TextCtrl->new($self->parent, -1, $opt->{default}, wxDefaultPosition, $size, $style);
             $field->Disable if $opt->{readonly};
             $self->_setters->{$opt_key} = sub { $field->SetValue($_[0]) };
@@ -109,7 +109,7 @@ sub BUILD {
                 Wx::StaticText->new($self->parent, -1, "  y:"),
                     my $y_field = Wx::TextCtrl->new($self->parent, -1, $opt->{default}->[1], wxDefaultPosition, $field_size),
             );
-            $field->Add($_) for @items;
+            $field->Add($_, 0, wxALIGN_CENTER_VERTICAL, 0) for @items;
             if ($opt->{tooltip}) {
                 $_->SetToolTipString($opt->{tooltip}) for @items;
             }
@@ -135,17 +135,18 @@ sub BUILD {
         $field->SetToolTipString($opt->{tooltip}) if $opt->{tooltip} && $field->can('SetToolTipString');
         if ($opt->{sidetext}) {
             my $sizer = Wx::BoxSizer->new(wxHORIZONTAL);
-            $sizer->Add($field);
+            $sizer->Add($field, 0, wxALIGN_CENTER_VERTICAL, 0);
             my $sidetext = Wx::StaticText->new($self->parent, -1, $opt->{sidetext}, wxDefaultPosition, wxDefaultSize);
             $sidetext->SetFont($sidetext_font);
             $sizer->Add($sidetext, 0, wxLEFT | wxALIGN_CENTER_VERTICAL , 4);
             $grid_sizer->Add($sizer);
         } else {
-            $grid_sizer->Add($field, 0, $opt->{full_width} ? wxEXPAND : 0);
+            $grid_sizer->Add($field, 0, ($opt->{full_width} ? wxEXPAND : 0) | wxALIGN_CENTER_VERTICAL, 0);
         }
     }
     
-    $self->sizer->Add($grid_sizer, 0, wxEXPAND);
+    # TODO: border size may be related to wxWidgets 2.8.x vs. 2.9.x instead of wxMAC specific
+    $self->sizer->Add($grid_sizer, 0, wxEXPAND | wxALL, &Wx::wxMAC ? 0 : 5);
 }
 
 sub _option {

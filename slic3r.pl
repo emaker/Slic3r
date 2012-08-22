@@ -13,7 +13,7 @@ use List::Util qw(first);
 use Slic3r;
 $|++;
 
-my %opt = ();
+our %opt = ();
 my %cli_options = ();
 {
     my %options = (
@@ -71,7 +71,7 @@ if ($opt{save}) {
 my $gui;
 if (!@ARGV && !$opt{save} && eval "require Slic3r::GUI; 1") {
     $gui = Slic3r::GUI->new;
-    $gui->{skeinpanel}->load_config_file($opt{load}[0]) if $opt{load};
+    $gui->{skeinpanel}->load_config_file($_) for @{$opt{load}};
     $gui->{skeinpanel}->load_config($cli_config);
     $gui->MainLoop;
     exit;
@@ -227,14 +227,14 @@ $j
   
    Retraction options:
     --retract-length    Length of retraction in mm when pausing extrusion 
-                        (default: $config->{retract_length})
-    --retract-speed     Speed for retraction in mm/s (default: $config->{retract_speed})
+                        (default: $config->{retract_length}[0])
+    --retract-speed     Speed for retraction in mm/s (default: $config->{retract_speed}[0])
     --retract-restart-extra
                         Additional amount of filament in mm to push after
-                        compensating retraction (default: $config->{retract_restart_extra})
+                        compensating retraction (default: $config->{retract_restart_extra}[0])
     --retract-before-travel
-                        Only retract before travel moves of this length in mm (default: $config->{retract_before_travel})
-    --retract-lift      Lift Z by the given distance in mm when retracting (default: $config->{retract_lift})
+                        Only retract before travel moves of this length in mm (default: $config->{retract_before_travel}[0])
+    --retract-lift      Lift Z by the given distance in mm when retracting (default: $config->{retract_lift}[0])
    
    Cooling options:
     --cooling           Enable fan and cooling control
@@ -291,6 +291,8 @@ $j
     --bridge-flow-ratio Multiplier for extrusion when bridging (> 0, default: $config->{bridge_flow_ratio})
   
    Multiple extruder options:
+    --extruder-offset   Offset of each extruder, if firmware doesn't handle the displacement
+                        (can be specified multiple times, default: 0x0)
     --perimeters-extruder
                         Extruder to use for perimeters (1+, default: 1)
     --infill-extruder   Extruder to use for infill (1+, default: 1)

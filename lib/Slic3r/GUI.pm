@@ -11,24 +11,24 @@ use Slic3r::GUI::OptionsGroup;
 use Slic3r::GUI::SkeinPanel;
 use Slic3r::GUI::Tab;
 
-use Wx 0.9901 qw(:bitmap :dialog :frame :icon :id :misc :systemsettings);
+use Wx 0.9901 qw(:bitmap :dialog :frame :icon :id :misc :systemsettings :toplevelwindow);
 use Wx::Event qw(EVT_CLOSE EVT_MENU);
 use base 'Wx::App';
 
-use constant MI_LOAD_CONF     =>  1;
-use constant MI_EXPORT_CONF   =>  2;
-use constant MI_QUICK_SLICE   =>  3;
-use constant MI_REPEAT_QUICK  =>  4;
-use constant MI_QUICK_SAVE_AS =>  5;
-use constant MI_SLICE_SVG     =>  6;
+use constant MI_LOAD_CONF     => &Wx::NewId;
+use constant MI_EXPORT_CONF   => &Wx::NewId;
+use constant MI_QUICK_SLICE   => &Wx::NewId;
+use constant MI_REPEAT_QUICK  => &Wx::NewId;
+use constant MI_QUICK_SAVE_AS => &Wx::NewId;
+use constant MI_SLICE_SVG     => &Wx::NewId;
 
-use constant MI_TAB_PLATER    =>  7;
-use constant MI_TAB_PRINT     =>  8;
-use constant MI_TAB_FILAMENT  =>  9;
-use constant MI_TAB_PRINTER   => 10;
+use constant MI_TAB_PLATER    => &Wx::NewId;
+use constant MI_TAB_PRINT     => &Wx::NewId;
+use constant MI_TAB_FILAMENT  => &Wx::NewId;
+use constant MI_TAB_PRINTER   => &Wx::NewId;
 
-use constant MI_CONF_WIZARD   => 11;
-use constant MI_WEBSITE       => 12;
+use constant MI_CONF_WIZARD   => &Wx::NewId;
+use constant MI_WEBSITE       => &Wx::NewId;
 
 our $datadir;
 our $Settings;
@@ -42,7 +42,7 @@ sub OnInit {
     my $self = shift;
     
     $self->SetAppName('Slic3r');
-    Slic3r::debugf "wxWidgets version %s\n", &Wx::wxVERSION_STRING;
+    Slic3r::debugf "wxWidgets version %s, Wx version %s\n", &Wx::wxVERSION_STRING, $Wx::VERSION;
     
     $self->{notifier} = Slic3r::GUI::Notifier->new;
     
@@ -88,7 +88,7 @@ sub OnInit {
         $fileMenu->AppendSeparator();
         $fileMenu->Append(wxID_EXIT, "&Quit", 'Quit Slic3r');
         EVT_MENU($frame, MI_LOAD_CONF, sub { $self->{skeinpanel}->load_config_file });
-        EVT_MENU($frame, MI_EXPORT_CONF, sub { $self->{skeinpanel}->save_config });
+        EVT_MENU($frame, MI_EXPORT_CONF, sub { $self->{skeinpanel}->export_config });
         EVT_MENU($frame, MI_QUICK_SLICE, sub { $self->{skeinpanel}->do_slice;
                                                $repeat->Enable(defined $Slic3r::GUI::SkeinPanel::last_input_file) });
         EVT_MENU($frame, MI_REPEAT_QUICK, sub { $self->{skeinpanel}->do_slice(reslice => 1) });
@@ -201,7 +201,9 @@ sub notify {
     my ($message) = @_;
 
     my $frame = $self->GetTopWindow;
-    $frame->RequestUserAttention unless ($frame->IsActive);
+    # try harder to attract user attention on OS X
+    $frame->RequestUserAttention(&Wx::wxMAC ? wxUSER_ATTENTION_ERROR : wxUSER_ATTENTION_INFO)
+        unless ($frame->IsActive);
 
     $self->{notifier}->notify($message);
 }
@@ -379,7 +381,7 @@ sub notify {
         $self->{growler}->notify(Event => 'SKEIN_DONE', Title => $title, Message => $message)
             if $self->{growler};
     };
-    if (0 && eval 'use Net::DBus; 1') {
+    if (eval 'use Net::DBus; 1') {
         eval {
             my $session = Net::DBus->session;
             my $serv = $session->get_service('org.freedesktop.Notifications');

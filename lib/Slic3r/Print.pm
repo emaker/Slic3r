@@ -2,10 +2,11 @@ package Slic3r::Print;
 use Moo;
 
 use File::Basename qw(basename fileparse);
+use File::Spec;
 use Math::ConvexHull 1.0.4 qw(convex_hull);
 use Slic3r::ExtrusionPath ':roles';
 use Slic3r::Geometry qw(X Y Z X1 Y1 X2 Y2 PI scale unscale move_points);
-use Slic3r::Geometry::Clipper qw(diff_ex union_ex intersection_ex offset JT_ROUND);
+use Slic3r::Geometry::Clipper qw(diff_ex union_ex intersection_ex offset JT_ROUND JT_SQUARE);
 use Time::HiRes qw(gettimeofday tv_interval);
 
 has 'config'                 => (is => 'rw', default => sub { Slic3r::Config->new_from_defaults }, trigger => 1);
@@ -46,7 +47,7 @@ sub _trigger_config {
     for my $t (0, map $_-1, map $self->config->get($_), qw(perimeter_extruder infill_extruder support_material_extruder)) {
         $Slic3r::extruders->[$t] ||= Slic3r::Extruder->new(
             map { $_ =>  $self->config->get($_)->[$t] // $self->config->get($_)->[0] } #/
-                qw(nozzle_diameter filament_diameter extrusion_multiplier temperature first_layer_temperature)
+                @{&Slic3r::Extruder::OPTIONS}
         );
     }
     
@@ -229,7 +230,7 @@ sub arrange_objects {
         : $Slic3r::Config->duplicate_distance;
     
     my @positions = Slic3r::Geometry::arrange
-        ($total_parts, $partx, $party, (map scale $_, @$Slic3r::Config->bed_size), scale $distance);
+        ($total_parts, $partx, $party, (map scale $_, @{$Slic3r::Config->bed_size}), scale $distance);
     
     for my $obj_idx (0..$#{$self->objects}) {
         @{$self->copies->[$obj_idx]} = splice @positions, 0, scalar @{$self->copies->[$obj_idx]};
@@ -509,21 +510,28 @@ sub make_brim {
     my $self = shift;
     return unless $Slic3r::Config->brim_width > 0;
     
+    my $flow = $Slic3r::first_layer_flow || $Slic3r::flow;
+    my $grow_distance = scale $flow->width / 2;
     my @islands = (); # array of polygons
     foreach my $obj_idx (0 .. $#{$self->objects}) {
-        my @object_islands = map $_->contour, @{ $self->objects->[$obj_idx]->layers->[0]->slices };
+        my $layer0 = $self->objects->[$obj_idx]->layers->[0];
+        my @object_islands = (
+            (map $_->contour, @{$layer0->slices}),
+            (map { $_->isa('Slic3r::Polygon') ? $_ : $_->grow($grow_distance) } @{$layer0->thin_walls}),
+            (map $_->unpack->polyline->grow($grow_distance), map @{$_->support_fills->paths}, grep $_->support_fills, $layer0),
+        );
         foreach my $copy (@{$self->copies->[$obj_idx]}) {
             push @islands, map $_->clone->translate(@$copy), @object_islands;
         }
     }
     
-    my $flow = $Slic3r::first_layer_flow || $Slic3r::flow;
     my $num_loops = sprintf "%.0f", $Slic3r::Config->brim_width / $flow->width;
     for my $i (reverse 1 .. $num_loops) {
+        # JT_SQUARE ensures no vertex is outside the given offset distance
         push @{$self->brim}, Slic3r::ExtrusionLoop->pack(
             polygon => Slic3r::Polygon->new($_),
             role    => EXTR_ROLE_SKIRT,
-        ) for @{Math::Clipper::offset(\@islands, $i * scale $flow->spacing)};
+        ) for @{Math::Clipper::offset(\@islands, $i * scale $flow->spacing, 100, JT_SQUARE)};
     }
 }
 
@@ -619,7 +627,7 @@ sub write_gcode {
             $gcodegen->shift_y($shift[Y]);
             $gcode .= $gcodegen->set_acceleration($Slic3r::Config->perimeter_acceleration);
             # skip skirt if we have a large brim
-            if ($layer_id < $Slic3r::Config->skirt_height && ($layer_id != 0 || $Slic3r::Config->skirt_distance + ($Slic3r::Config->skirts * $Slic3r::flow->width) > $Slic3r::Config->brim_width)) {
+            if ($layer_id < $Slic3r::Config->skirt_height && ($layer_id != 0 || $Slic3r::Config->skirt_distance + (($Slic3r::Config->skirts - 1) * $Slic3r::flow->spacing) > $Slic3r::Config->brim_width)) {
                 $gcode .= $gcodegen->extrude_loop($_, 'skirt') for @{$self->skirt};
             }
             $skirt_done++;
@@ -627,6 +635,8 @@ sub write_gcode {
         
         # extrude brim
         if ($layer_id == 0 && !$brim_done) {
+            $gcodegen->shift_x($shift[X]);
+            $gcodegen->shift_y($shift[Y]);
             $gcode .= $gcodegen->extrude_loop($_, 'brim') for @{$self->brim};
             $brim_done = 1;
         }
@@ -775,6 +785,10 @@ sub expanded_output_filepath {
     my $self = shift;
     my ($path) = @_;
     
+    # if output path is an existing directory, we take that and append
+    # the specified filename format
+    $path = File::Spec->join($path, $Slic3r::Config->output_filename_format) if ($path && -d $path);
+
     # if no explicit output file was defined, we take the input
     # file directory and append the specified filename format
     my $input_file = $self->objects->[0]->input_file;

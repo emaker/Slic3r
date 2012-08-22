@@ -179,9 +179,9 @@ sub new {
     $sizer->Add($self->{index}, 1, wxEXPAND | wxTOP | wxRIGHT, 10);
 
     # contents
-    $self->{width} = 400;
+    $self->{width} = 430;
     $self->{vsizer} = Wx::BoxSizer->new(wxVERTICAL);
-    $sizer->Add($self->{vsizer}, 1, wxEXPAND, 0);
+    $sizer->Add($self->{vsizer}, 1);
 
     return $self;
 }

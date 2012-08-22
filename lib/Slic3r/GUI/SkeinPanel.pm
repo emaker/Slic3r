@@ -9,8 +9,6 @@ use Wx qw(:dialog :filedialog :font :icon :id :misc :notebook :panel :sizer);
 use Wx::Event qw(EVT_BUTTON);
 use base 'Wx::Panel';
 
-our $last_skein_dir;
-our $last_config_dir;
 our $last_input_file;
 our $last_output_file;
 our $last_config;
@@ -22,18 +20,16 @@ sub new {
     
     $self->{tabpanel} = Wx::Notebook->new($self, -1, wxDefaultPosition, wxDefaultSize, wxNB_TOP | wxTAB_TRAVERSAL);
     $self->{tabpanel}->AddPage($self->{plater} = Slic3r::GUI::Plater->new($self->{tabpanel}), "Plater");
-    $self->{options_tabs} = {
-        print       => Slic3r::GUI::Tab::Print->new     ($self->{tabpanel}, sync_presets_with => $self->{plater}{preset_choosers}{print}),
-        filament    => Slic3r::GUI::Tab::Filament->new  ($self->{tabpanel}, sync_presets_with => $self->{plater}{preset_choosers}{filament}),
-        printer     => Slic3r::GUI::Tab::Printer->new   ($self->{tabpanel}, sync_presets_with => $self->{plater}{preset_choosers}{printer}),
-    };
+    $self->{options_tabs} = {};
     
-    # propagate config change events to the plater
-    $_->{on_value_change} = sub { $self->{plater}->on_config_change(@_) } for values %{$self->{options_tabs}};
-    
-    $self->{tabpanel}->AddPage($self->{options_tabs}{print}, $self->{options_tabs}{print}->title);
-    $self->{tabpanel}->AddPage($self->{options_tabs}{filament}, $self->{options_tabs}{filament}->title);
-    $self->{tabpanel}->AddPage($self->{options_tabs}{printer}, $self->{options_tabs}{printer}->title);
+    for my $tab_name (qw(print filament printer)) {
+        $self->{options_tabs}{$tab_name} = ("Slic3r::GUI::Tab::" . ucfirst $tab_name)->new(
+            $self->{tabpanel},
+            plater              => $self->{plater},
+            on_value_change     => sub { $self->{plater}->on_config_change(@_) }, # propagate config change events to the plater
+        );
+        $self->{tabpanel}->AddPage($self->{options_tabs}{$tab_name}, $self->{options_tabs}{$tab_name}->title);
+    }
     
     my $sizer = Wx::BoxSizer->new(wxVERTICAL);
     $sizer->Add($self->{tabpanel}, 1, wxEXPAND);
@@ -47,7 +43,7 @@ sub new {
 
 our $model_wildcard = "STL files (*.stl)|*.stl;*.STL|OBJ files (*.obj)|*.obj;*.OBJ|AMF files (*.amf)|*.amf;*.AMF;*.xml;*.XML";
 our $ini_wildcard = "INI files *.ini|*.ini;*.INI";
-our $gcode_wildcard = "G-code files *.gcode|*.gcode;*.GCODE";
+our $gcode_wildcard = "G-code files *.gcode|*.gcode;*.GCODE|G-code files *.g|*.g;*.G";
 our $svg_wildcard = "SVG files *.svg|*.svg;*.SVG";
 
 sub do_slice {
@@ -70,7 +66,7 @@ sub do_slice {
         }
         
         # select input file
-        my $dir = $last_skein_dir || $last_config_dir || "";
+        my $dir = $Slic3r::GUI::Settings->{recent}{skein_directory} || $Slic3r::GUI::Settings->{recent}{config_directory} || '';
 
         my $input_file;
         if (!$params{reslice}) {
@@ -96,7 +92,8 @@ sub do_slice {
             $input_file = $last_input_file;
         }
         my $input_file_basename = basename($input_file);
-        $last_skein_dir = dirname($input_file);
+        $Slic3r::GUI::Settings->{recent}{skein_directory} = dirname($input_file);
+        Slic3r::GUI->save_settings;
         
         my $print = Slic3r::Print->new(config => $config);
         $print->add_object_from_file($input_file);
@@ -154,12 +151,7 @@ sub do_slice {
             $message .= sprintf " %d minutes and", $minutes if $minutes;
             $message .= sprintf " %.1f seconds", $print->processing_time - $minutes*60;
         }
-        $message .= ".\n";
-        
-        # Filament required
-        $message .= sprintf "Filament required: %.1fmm (%.1fcm3).",
-            $print->total_extrusion_length, $print->total_extrusion_volume;
-
+        $message .= ".";
         &Wx::wxTheApp->notify($message);
         Wx::MessageDialog->new($self, $message, 'Slicing Done!', 
             wxOK | wxICON_INFORMATION)->ShowModal;
@@ -167,7 +159,7 @@ sub do_slice {
     Slic3r::GUI::catch_error($self, sub { $process_dialog->Destroy if $process_dialog });
 }
 
-sub save_config {
+sub export_config {
     my $self = shift;
     
     my $config = $self->config;
@@ -177,13 +169,14 @@ sub save_config {
     };
     Slic3r::GUI::catch_error($self) and return;
     
-    my $dir = $last_config ? dirname($last_config) : $last_config_dir || $last_skein_dir || "";
+    my $dir = $last_config ? dirname($last_config) : $Slic3r::GUI::Settings->{recent}{config_directory} || $Slic3r::GUI::Settings->{recent}{skein_directory} || '';
     my $filename = $last_config ? basename($last_config) : "config.ini";
     my $dlg = Wx::FileDialog->new($self, 'Save configuration as:', $dir, $filename, 
         $ini_wildcard, wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
     if ($dlg->ShowModal == wxID_OK) {
         my $file = $dlg->GetPath;
-        $last_config_dir = dirname($file);
+        $Slic3r::GUI::Settings->{recent}{config_directory} = dirname($file);
+        Slic3r::GUI->save_settings;
         $last_config = $file;
         $config->save($file);
     }
@@ -196,14 +189,15 @@ sub load_config_file {
     
     if (!$file) {
         return unless $self->check_unsaved_changes;
-        my $dir = $last_config ? dirname($last_config) : $last_config_dir || $last_skein_dir || "";
+        my $dir = $last_config ? dirname($last_config) : $Slic3r::GUI::Settings->{recent}{config_directory} || $Slic3r::GUI::Settings->{recent}{skein_directory} || '';
         my $dlg = Wx::FileDialog->new($self, 'Select configuration to load:', $dir, "config.ini", 
                 $ini_wildcard, wxFD_OPEN | wxFD_FILE_MUST_EXIST);
         return unless $dlg->ShowModal == wxID_OK;
         ($file) = $dlg->GetPaths;
         $dlg->Destroy;
     }
-    $last_config_dir = dirname($file);
+    $Slic3r::GUI::Settings->{recent}{config_directory} = dirname($file);
+    Slic3r::GUI->save_settings;
     $last_config = $file;
     $_->load_external_config($file) for values %{$self->{options_tabs}};
 }
@@ -236,9 +230,32 @@ This method collects all config values from the tabs and merges them into a sing
 sub config {
     my $self = shift;
     
+    # retrieve filament presets and build a single config object for them
+    my $filament_config;
+    if ($self->{plater}->filament_presets == 1) {
+        $filament_config = $self->{options_tabs}{filament}->config;
+    } else {
+        # TODO: handle dirty presets.
+        # perhaps plater shouldn't expose dirty presets at all in multi-extruder environments.
+        foreach my $preset_idx ($self->{plater}->filament_presets) {
+            my $preset = $self->{options_tabs}{filament}->get_preset($preset_idx);
+            my $config = $self->{options_tabs}{filament}->get_preset_config($preset);
+            if (!$filament_config) {
+                $filament_config = $config;
+                next;
+            }
+            foreach my $opt_key (keys %$config) {
+                next unless ref $filament_config->get($opt_key) eq 'ARRAY';
+                push @{ $filament_config->get($opt_key) }, $config->get($opt_key)->[0];
+            }
+        }
+    }
+    
     return Slic3r::Config->merge(
         Slic3r::Config->new_from_defaults,
-        (map $_->config, values %{$self->{options_tabs}}),
+        $self->{options_tabs}{print}->config,
+        $self->{options_tabs}{printer}->config,
+        $filament_config,
     );
 }
 

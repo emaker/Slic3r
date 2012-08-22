@@ -9,6 +9,7 @@ my $build = Module::Build->new(
     requires        => {
         'Boost::Geometry::Utils'    => '0',
         'File::Basename'            => '0',
+        'File::Spec'                => '0',
         'Getopt::Long'              => '0',
         'Math::Clipper'             => '1.09',
         'Math::ConvexHull'          => '1.0.4',
@@ -24,7 +25,8 @@ my $build = Module::Build->new(
     },
     recommends     => {
         'Growl::GNTP' => '0.15',
-        #'Net::DBus'   => '0',
+        'Net::DBus'   => '0',
+        'XML::SAX'    => '0',
         'Wx'          => '0.9901',
     },
     script_files    => ['slic3r.pl'],

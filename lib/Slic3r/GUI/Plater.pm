@@ -9,16 +9,16 @@ use Slic3r::Geometry qw(X Y Z X1 Y1 X2 Y2 scale unscale);
 use Slic3r::Geometry::Clipper qw(JT_ROUND);
 use threads::shared qw(shared_clone);
 use Wx qw(:bitmap :brush :button :cursor :dialog :filedialog :font :keycode :icon :id :listctrl :misc :panel :pen :sizer :toolbar :window);
-use Wx::Event qw(EVT_BUTTON EVT_COMMAND EVT_KEY_DOWN EVT_LIST_ITEM_DESELECTED EVT_LIST_ITEM_SELECTED EVT_MOUSE_EVENTS EVT_PAINT EVT_TOOL);
+use Wx::Event qw(EVT_BUTTON EVT_COMMAND EVT_KEY_DOWN EVT_LIST_ITEM_DESELECTED EVT_LIST_ITEM_SELECTED EVT_MOUSE_EVENTS EVT_PAINT EVT_TOOL EVT_CHOICE);
 use base 'Wx::Panel';
 
-use constant TB_MORE    => 1;
-use constant TB_LESS    => 2;
-use constant TB_45CW    => 3;
-use constant TB_45CCW   => 4;
-use constant TB_ROTATE  => 5;
-use constant TB_SCALE   => 6;
-use constant TB_SPLIT   => 7;
+use constant TB_MORE    => &Wx::NewId;
+use constant TB_LESS    => &Wx::NewId;
+use constant TB_45CW    => &Wx::NewId;
+use constant TB_45CCW   => &Wx::NewId;
+use constant TB_ROTATE  => &Wx::NewId;
+use constant TB_SCALE   => &Wx::NewId;
+use constant TB_SPLIT   => &Wx::NewId;
 
 my $THUMBNAIL_DONE_EVENT    : shared = Wx::NewEventType;
 my $PROGRESS_BAR_EVENT      : shared = Wx::NewEventType;
@@ -26,9 +26,11 @@ my $MESSAGE_DIALOG_EVENT    : shared = Wx::NewEventType;
 my $EXPORT_COMPLETED_EVENT  : shared = Wx::NewEventType;
 my $EXPORT_FAILED_EVENT     : shared = Wx::NewEventType;
 
+use constant CANVAS_SIZE => [300,300];
 use constant CANVAS_TEXT => join('-', +(localtime)[3,4]) eq '13-8'
     ? 'What do you want to print today? ™' # Sept. 13, 2006. The first part ever printed by a RepRap to make another RepRap.
     : 'Drag your objects here';
+use constant FILAMENT_CHOOSERS_SPACING => 3;
 
 sub new {
     my $class = shift;
@@ -38,7 +40,7 @@ sub new {
         bed_size print_center complete_objects extruder_clearance_radius skirts skirt_distance
     ));
     
-    $self->{canvas} = Wx::Panel->new($self, -1, wxDefaultPosition, [300, 300], wxTAB_TRAVERSAL);
+    $self->{canvas} = Wx::Panel->new($self, -1, wxDefaultPosition, CANVAS_SIZE, wxTAB_TRAVERSAL);
     $self->{canvas}->SetBackgroundColour(Wx::wxWHITE);
     EVT_PAINT($self->{canvas}, \&repaint);
     EVT_MOUSE_EVENTS($self->{canvas}, \&mouse_event);
@@ -97,7 +99,6 @@ sub new {
     $self->{btn_reset} = Wx::Button->new($self, -1, "Delete All", wxDefaultPosition, wxDefaultSize, wxBU_LEFT);
     $self->{btn_arrange} = Wx::Button->new($self, -1, "Autoarrange", wxDefaultPosition, wxDefaultSize, wxBU_LEFT);
     $self->{btn_export_gcode} = Wx::Button->new($self, -1, "Export G-code…", wxDefaultPosition, wxDefaultSize, wxBU_LEFT);
-    $self->{btn_export_gcode}->SetDefault;
     $self->{btn_export_stl} = Wx::Button->new($self, -1, "Export STL…", wxDefaultPosition, wxDefaultSize, wxBU_LEFT);
     
     if (&Wx::wxVERSION_STRING =~ / 2\.9\.[1-9]/) {
@@ -124,7 +125,7 @@ sub new {
     $self->selection_changed(0);
     $self->object_list_changed;
     EVT_BUTTON($self, $self->{btn_load}, \&load);
-    EVT_BUTTON($self, $self->{btn_remove}, \&remove);
+    EVT_BUTTON($self, $self->{btn_remove}, sub { $self->remove() }); # explicitly pass no argument to remove
     EVT_BUTTON($self, $self->{btn_reset}, \&reset);
     EVT_BUTTON($self, $self->{btn_arrange}, \&arrange);
     EVT_BUTTON($self, $self->{btn_export_gcode}, \&export_gcode);
@@ -218,11 +219,22 @@ sub new {
             printer     => 'Printer',
         );
         $self->{preset_choosers} = {};
+        $self->{preset_choosers_sizers} = {};
         for my $group (qw(print filament printer)) {
             my $text = Wx::StaticText->new($self, -1, "$group_labels{$group}:", wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT);
-            $self->{preset_choosers}{$group} = Wx::Choice->new($self, -1, wxDefaultPosition, [150, -1], []);
+            my $choice = Wx::Choice->new($self, -1, wxDefaultPosition, [150, -1], []);
+            $self->{preset_choosers}{$group} = [$choice];
+            EVT_CHOICE($choice, $choice, sub {
+                my $choice = shift;  # avoid leaks
+                return if $group eq 'filament' && @{$self->{preset_choosers}{filament}} > 1; #/
+                $self->skeinpanel->{options_tabs}{$group}->select_preset($choice->GetSelection);
+            });
+            
+            $self->{preset_choosers_sizers}{$group} = Wx::BoxSizer->new(wxVERTICAL);
+            $self->{preset_choosers_sizers}{$group}->Add($choice, 0, wxEXPAND | wxBOTTOM, FILAMENT_CHOOSERS_SPACING);
+            
             $presets->Add($text, 0, wxALIGN_RIGHT | wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
-            $presets->Add($self->{preset_choosers}{$group}, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 15);
+            $presets->Add($self->{preset_choosers_sizers}{$group}, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 15);
         }
         $presets->AddStretchSpacer(1);
         
@@ -241,10 +253,29 @@ sub skeinpanel {
     return $self->GetParent->GetParent;
 }
 
+sub update_presets {
+    my $self = shift;
+    my ($group, $items, $selected) = @_;
+    
+    foreach my $choice (@{ $self->{preset_choosers}{$group} }) {
+        my $sel = $choice->GetSelection;
+        $choice->Clear;
+        $choice->Append($_) for @$items;
+        $choice->SetSelection($sel) if $sel <= $#$items;
+    }
+    $self->{preset_choosers}{$group}[0]->SetSelection($selected);
+}
+
+sub filament_presets {
+    my $self = shift;
+    
+    return map $_->GetSelection, @{ $self->{preset_choosers}{filament} };
+}
+
 sub load {
     my $self = shift;
     
-    my $dir = $Slic3r::GUI::SkeinPanel::last_skein_dir || $Slic3r::GUI::SkeinPanel::last_config_dir || "";
+    my $dir = $Slic3r::GUI::Settings->{recent}{skein_directory} || $Slic3r::GUI::Settings->{recent}{config_directory} || '';
     my $dialog = Wx::FileDialog->new($self, 'Choose one or more files (STL/OBJ/AMF):', $dir, "", $Slic3r::GUI::SkeinPanel::model_wildcard, wxFD_OPEN | wxFD_MULTIPLE | wxFD_FILE_MUST_EXIST);
     if ($dialog->ShowModal != wxID_OK) {
         $dialog->Destroy;
@@ -259,7 +290,8 @@ sub load_file {
     my $self = shift;
     my ($input_file) = @_;
     
-    $Slic3r::GUI::SkeinPanel::last_skein_dir = dirname($input_file);
+    $Slic3r::GUI::Settings->{recent}{skein_directory} = dirname($input_file);
+    Slic3r::GUI->save_settings;
     
     my $process_dialog = Wx::ProgressDialog->new('Loading…', "Processing input file…", 100, $self, 0);
     $process_dialog->Pulse;
@@ -291,10 +323,16 @@ sub object_loaded {
 
 sub remove {
     my $self = shift;
+    my ($obj_idx) = @_;
     
-    foreach my $pobj (@{$self->{selected_objects}}) {
-        my ($obj_idx, $copy_idx) = ($pobj->[0], $pobj->[1]);
-        $self->{print}->copies->[$obj_idx][$copy_idx] = undef;
+    if (defined $obj_idx) {
+        $self->{print}->copies->[$obj_idx][$_] = undef
+            for 0 .. $#{ $self->{print}->copies->[$obj_idx] };
+    } else {
+        foreach my $pobj (@{$self->{selected_objects}}) {
+            my ($obj_idx, $copy_idx) = ($pobj->[0], $pobj->[1]);
+            $self->{print}->copies->[$obj_idx][$copy_idx] = undef;
+        }
     }
     
     my @objects_to_remove = ();
@@ -444,9 +482,15 @@ sub split_object {
     
     my @new_meshes = $mesh->split_mesh;
     if (@new_meshes == 1) {
-        Slic3r::GUI::warning_catcher($self)->("The selected object couldn't be splitted because it contained already a single part.");
+        Slic3r::GUI::warning_catcher($self)->("The selected object couldn't be splitted because it already contains a single part.");
         return;
     }
+    
+    # remove the original object before spawning the object_loaded event, otherwise 
+    # we'll pass the wrong $obj_idx to it (which won't be recognized after the
+    # thumbnail thread returns)
+    $self->remove($obj_idx);
+    
     foreach my $mesh (@new_meshes) {
         my $object = $self->{print}->add_object_from_mesh($mesh);
         $object->input_file($current_object->input_file);
@@ -455,8 +499,6 @@ sub split_object {
         $self->object_loaded($new_obj_idx, no_arrange => 1);
     }
     
-    $self->{list}->Select($obj_idx, 1);
-    $self->remove;
     $self->arrange;
 }
 
@@ -467,6 +509,9 @@ sub export_gcode {
         Wx::MessageDialog->new($self, "Another slicing job is currently running.", 'Error', wxOK | wxICON_ERROR)->ShowModal;
         return;
     }
+    
+    # set this before spawning the thread because ->config needs GetParent and it's not available there
+    $self->{print}->config($self->skeinpanel->config);
     
     # select output file
     $self->{output_file} = $main::opt{output};
@@ -483,7 +528,6 @@ sub export_gcode {
     }
     
     $self->statusbar->StartBusy;
-    $self->{print}->config($self->skeinpanel->config);  # set this before spawning the thread because ->config needs GetParent and it's not available there
     if ($Slic3r::have_threads) {
         $self->{export_thread} = threads->create(sub {
             $self->export_gcode2(
@@ -559,12 +603,7 @@ sub export_gcode2 {
             $message .= sprintf " %d minutes and", $minutes if $minutes;
             $message .= sprintf " %.1f seconds", $print->processing_time - $minutes*60;
         }
-        $message .= ".\n";
-
-        # Filament required
-        $message .= sprintf "Filament required: %.1fmm (%.1fcm3).",
-            $print->total_extrusion_length, $print->total_extrusion_volume;
-
+        $message .= ".";
         $params{on_completed}->($message);
         $print->cleanup;
     };
@@ -676,8 +715,22 @@ sub recenter {
 sub on_config_change {
     my $self = shift;
     my ($opt_key, $value) = @_;
-    $self->{config}->set($opt_key, $value) if exists $self->{config}{$opt_key};
-    $self->_update_bed_size;
+    if ($opt_key eq 'extruders_count' && defined $value) {
+        my $choices = $self->{preset_choosers}{filament};
+        while (@$choices < $value) {
+            push @$choices, Wx::Choice->new($self, -1, wxDefaultPosition, [150, -1], [$choices->[0]->GetStrings]);
+            $self->{preset_choosers_sizers}{filament}->Add($choices->[-1], 0, wxEXPAND | wxBOTTOM, FILAMENT_CHOOSERS_SPACING);
+        }
+        while (@$choices > $value) {
+            $self->{preset_choosers_sizers}{filament}->Remove(-1);
+            $choices->[-1]->Destroy;
+            pop @$choices;
+        }
+        $self->Layout;
+    } elsif ($self->{config}->has($opt_key)) {
+        $self->{config}->set($opt_key, $value);
+        $self->_update_bed_size if $opt_key eq 'bed_size';
+    }
 }
 
 sub _update_bed_size {
@@ -686,7 +739,7 @@ sub _update_bed_size {
     # supposing the preview canvas is square, calculate the scaling factor
     # to constrain print bed area inside preview
     my $bed_size = $self->{config}->bed_size;
-    my $canvas_side = $self->{canvas}->GetSize->GetWidth;
+    my $canvas_side = CANVAS_SIZE->[X];  # when the canvas is not rendered yet, its GetSize() method returns 0,0
     my $bed_largest_side = $bed_size->[X] > $bed_size->[Y] ? $bed_size->[X] : $bed_size->[Y];
     my $old_scaling_factor = $self->{scaling_factor};
     $self->{scaling_factor} = $canvas_side / $bed_largest_side;
@@ -863,7 +916,8 @@ sub selection_changed {
         for grep $self->{"btn_$_"}, qw(remove increase decrease rotate45cw rotate45ccw rotate changescale split);
     
     if ($self->{htoolbar}) {
-        $self->{htoolbar}->EnableTool($_, $have_sel) for 1..$self->{htoolbar}->GetToolsCount;
+        $self->{htoolbar}->EnableTool($_, $have_sel)
+            for (TB_MORE, TB_LESS, TB_45CW, TB_45CCW, TB_ROTATE, TB_SCALE, TB_SPLIT);
     }
 }
 

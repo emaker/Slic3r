@@ -8,6 +8,9 @@ use constant PI => 4 * atan2(1, 1);
 # cemetery of old config settings
 our @Ignore = qw(duplicate_x duplicate_y multiply_x multiply_y support_material_tool);
 
+my $serialize_comma     = sub { join ',', @{$_[0]} };
+my $deserialize_comma   = sub { [ split /,/, $_[0] ] };
+
 our $Options = {
 
     # miscellaneous options
@@ -52,8 +55,8 @@ our $Options = {
         sidetext => 'mm',
         cli     => 'print-center=s',
         type    => 'point',
-        serialize   => sub { join ',', @{$_[0]} },
-        deserialize => sub { [ split /[,x]/, $_[0] ] },
+        serialize   => $serialize_comma,
+        deserialize => $deserialize_comma,
         default => [100,100],
     },
     'gcode_flavor' => {
@@ -110,14 +113,24 @@ our $Options = {
     },
     
     # extruders options
+    'extruder_offset' => {
+        label   => 'Extruder offset',
+        tooltip => 'If your firmware doesn\'t handle the extruder displacement you need the G-code to take it into account. This option lets you specify the displacement of each extruder with respect to the first one. It expects positive coordinates (they will be subtracted from the XY coordinate).',
+        sidetext => 'mm',
+        cli     => 'extruder-offset=s@',
+        type    => 'point',
+        serialize   => sub { join ',', map { join 'x', @$_ } @{$_[0]} },
+        deserialize => sub { [ map [ split /x/, $_ ], (ref $_[0] eq 'ARRAY') ? @{$_[0]} : (split /,/, $_[0] || '0x0') ] },
+        default => [[0,0]],
+    },
     'nozzle_diameter' => {
         label   => 'Nozzle diameter',
         tooltip => 'This is the diameter of your extruder nozzle (for example: 0.5, 0.35 etc.)',
         cli     => 'nozzle-diameter=f@',
         type    => 'f',
         sidetext => 'mm',
-        serialize   => sub { join ',', @{$_[0]} },
-        deserialize => sub { [ split /,/, $_[0] ] },
+        serialize   => $serialize_comma,
+        deserialize => $deserialize_comma,
         default => [0.5],
     },
     'filament_diameter' => {
@@ -126,8 +139,8 @@ our $Options = {
         sidetext => 'mm',
         cli     => 'filament-diameter=f@',
         type    => 'f',
-        serialize   => sub { join ',', @{$_[0]} },
-        deserialize => sub { [ split /,/, $_[0] ] },
+        serialize   => $serialize_comma,
+        deserialize => $deserialize_comma,
         default     => [3],
     },
     'extrusion_multiplier' => {
@@ -135,8 +148,8 @@ our $Options = {
         tooltip => 'This factor changes the amount of flow proportionally. You may need to tweak this setting to get nice surface finish and correct single wall widths. Usual values are between 0.9 and 1.1. If you think you need to change this more, check filament diameter and your firmware E steps.',
         cli     => 'extrusion-multiplier=f@',
         type    => 'f',
-        serialize   => sub { join ',', @{$_[0]} },
-        deserialize => sub { [ split /,/, $_[0] ] },
+        serialize   => $serialize_comma,
+        deserialize => $deserialize_comma,
         default => [1],
     },
     'temperature' => {
@@ -146,8 +159,8 @@ our $Options = {
         cli     => 'temperature=i@',
         type    => 'i',
         max     => 300,
-        serialize   => sub { join ',', @{$_[0]} },
-        deserialize => sub { [ split /,/, $_[0] ] },
+        serialize   => $serialize_comma,
+        deserialize => sub { $_[0] ? [ split /,/, $_[0] ] : [0] },
         default => [200],
     },
     'first_layer_temperature' => {
@@ -156,8 +169,8 @@ our $Options = {
         sidetext => '°C',
         cli     => 'first-layer-temperature=i@',
         type    => 'i',
-        serialize   => sub { join ',', @{$_[0]} },
-        deserialize => sub { [ split /,/, $_[0] ] },
+        serialize   => $serialize_comma,
+        deserialize => sub { $_[0] ? [ split /,/, $_[0] ] : [0] },
         max     => 300,
         default => [200],
     },
@@ -177,7 +190,7 @@ our $Options = {
         default => 1,
     },
     'support_material_extruder' => {
-        label   => 'Extruder',
+        label   => 'Support material extruder',
         cli     => 'support-material-extruder=i',
         type    => 'i',
         default => 1,
@@ -547,42 +560,52 @@ END
         label   => 'Length',
         tooltip => 'When retraction is triggered, filament is pulled back by the specified amount (the length is measured on raw filament, before it enters the extruder).',
         sidetext => 'mm (zero to disable)',
-        cli     => 'retract-length=f',
+        cli     => 'retract-length=f@',
         type    => 'f',
-        default => 1,
+        serialize   => $serialize_comma,
+        deserialize => $deserialize_comma,
+        default => [1],
     },
     'retract_speed' => {
         label   => 'Speed',
         tooltip => 'The speed for retractions (it only applies to the extruder motor).',
         sidetext => 'mm/s',
-        cli     => 'retract-speed=f',
+        cli     => 'retract-speed=f@',
         type    => 'i',
         max     => 1000,
-        default => 30,
+        serialize   => $serialize_comma,
+        deserialize => $deserialize_comma,
+        default => [30],
     },
     'retract_restart_extra' => {
         label   => 'Extra length on restart',
         tooltip => 'When the retraction is compensated after the travel move, the extruder will push this additional amount of filament. This setting is rarely needed.',
         sidetext => 'mm',
-        cli     => 'retract-restart-extra=f',
+        cli     => 'retract-restart-extra=f@',
         type    => 'f',
-        default => 0,
+        serialize   => $serialize_comma,
+        deserialize => $deserialize_comma,
+        default => [0],
     },
     'retract_before_travel' => {
         label   => 'Minimum travel after retraction',
         tooltip => 'Retraction is not triggered when travel moves are shorter than this length.',
         sidetext => 'mm',
-        cli     => 'retract-before-travel=f',
+        cli     => 'retract-before-travel=f@',
         type    => 'f',
-        default => 2,
+        serialize   => $serialize_comma,
+        deserialize => $deserialize_comma,
+        default => [2],
     },
     'retract_lift' => {
         label   => 'Lift Z',
         tooltip => 'If you set this to a positive value, Z is quickly raised every time a retraction is triggered.',
         sidetext => 'mm',
-        cli     => 'retract-lift=f',
+        cli     => 'retract-lift=f@',
         type    => 'f',
-        default => 0,
+        serialize   => $serialize_comma,
+        deserialize => $deserialize_comma,
+        default => [0],
     },
     
     # cooling options
@@ -727,7 +750,7 @@ END
         sidetext => 'mm',
         cli     => 'bed-size=s',
         type    => 'point',
-        serialize   => sub { join ',', @{$_[0]} },
+        serialize   => $serialize_comma,
         deserialize => sub { [ split /[,x]/, $_[0] ] },
         default => [200,200],
     },
@@ -735,7 +758,7 @@ END
         label   => 'Copies (grid)',
         cli     => 'duplicate-grid=s',
         type    => 'point',
-        serialize   => sub { join ',', @{$_[0]} },
+        serialize   => $serialize_comma,
         deserialize => sub { [ split /[,x]/, $_[0] ] },
         default => [1,1],
     },
@@ -818,14 +841,16 @@ sub new_from_cli {
     }
     
     $args{$_} = $Options->{$_}{deserialize}->($args{$_})
-        for grep exists $args{$_}, qw(print_center bed_size duplicate_grid);
+        for grep exists $args{$_}, qw(print_center bed_size duplicate_grid extruder_offset);
     
     return $class->new(%args);
 }
 
 sub merge {
     my $class = shift;
-    return $class->new(map %$_, @_);
+    my $config = $class->new;
+    $config->apply($_) for @_;
+    return $config;
 }
 
 sub load {
@@ -903,6 +928,12 @@ sub set_ifndef {
     
     $self->set($opt_key, $value, $deserialize)
         if !defined $self->get($opt_key);
+}
+
+sub has {
+    my $self = shift;
+    my ($opt_key) = @_;
+    return exists $self->{$opt_key};
 }
 
 sub serialize {
@@ -1057,7 +1088,7 @@ sub replace_options {
     # build a regexp to match the available options
     my $options = join '|',
         grep !$Slic3r::Config::Options->{$_}{multiline},
-        grep exists $self->{$_},
+        grep $self->has($_),
         keys %{$Slic3r::Config::Options};
     
     # use that regexp to search and replace option names with option values

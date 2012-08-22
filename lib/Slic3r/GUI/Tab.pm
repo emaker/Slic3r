@@ -14,12 +14,7 @@ sub new {
     my ($parent, %params) = @_;
     my $self = $class->SUPER::new($parent, -1, wxDefaultPosition, wxDefaultSize, wxBK_LEFT | wxTAB_TRAVERSAL);
     $self->{options} = []; # array of option names handled by this tab
-    
-    $self->{sync_presets_with} = $params{sync_presets_with};
-    EVT_CHOICE($parent, $self->{sync_presets_with}, sub {
-        $self->{presets_choice}->SetSelection($self->{sync_presets_with}->GetSelection);
-        $self->on_select_preset;
-    });
+    $self->{$_} = $params{$_} for qw(plater on_value_change);
     
     # horizontal sizer
     $self->{sizer} = Wx::BoxSizer->new(wxHORIZONTAL);
@@ -102,7 +97,7 @@ sub new {
         return unless $dlg->ShowModal == wxID_OK;
         
         my $file = sprintf "$Slic3r::GUI::datadir/%s/%s.ini", $self->name, $dlg->get_name;
-        $self->{config}->save($file);
+        $self->config->save($file);
         $self->set_dirty(0);
         $self->load_presets;
         $self->{presets_choice}->SetSelection(first { basename($self->{presets}[$_]{file}) eq $dlg->get_name . ".ini" } 1 .. $#{$self->{presets}});
@@ -142,6 +137,11 @@ sub current_preset {
     return $self->{presets}[ $self->{presets_choice}->GetSelection ];
 }
 
+sub get_preset {
+    my $self = shift;
+    return $self->{presets}[ $_[0] ];
+}
+
 # propagate event to the parent
 sub on_value_change {
     my $self = shift;
@@ -155,6 +155,12 @@ sub config { $_[0]->{config}->clone }
 sub select_default_preset {
     my $self = shift;
     $self->{presets_choice}->SetSelection(0);
+}
+
+sub select_preset {
+    my $self = shift;
+    $self->{presets_choice}->SetSelection($_[0]);
+    $self->on_select_preset;
 }
 
 sub on_select_preset {
@@ -172,29 +178,46 @@ sub on_select_preset {
     }
     
     my $preset = $self->current_preset;
-    if ($preset->{default}) {
-        # default settings: disable the delete button
-        $self->{config}->apply(Slic3r::Config->new_from_defaults(@{$self->{options}}));
-        $self->{btn_delete_preset}->Disable;
-    } else {
-        if (!-e $preset->{file}) {
-            Slic3r::GUI::show_error($self, "The selected preset does not exist anymore ($preset->{file}).");
-            return;
+    my $preset_config = $self->get_preset_config($preset);
+    eval {
+        local $SIG{__WARN__} = Slic3r::GUI::warning_catcher($self);
+        foreach my $opt_key (@{$self->{options}}) {
+            $self->{config}->set($opt_key, $preset_config->get($opt_key))
+                if $preset_config->has($opt_key);
         }
-        eval {
-            local $SIG{__WARN__} = Slic3r::GUI::warning_catcher($self);
-            $self->{config}->apply(Slic3r::Config->load($preset->{file}));
-        };
-        Slic3r::GUI::catch_error($self);
-        $preset->{external}
-            ? $self->{btn_delete_preset}->Disable
-            : $self->{btn_delete_preset}->Enable;
-    }
+    };
+    Slic3r::GUI::catch_error($self);
+    ($preset->{default} || $preset->{external})
+        ? $self->{btn_delete_preset}->Disable
+        : $self->{btn_delete_preset}->Enable;
+    
     $self->on_preset_loaded;
     $self->reload_values;
     $self->set_dirty(0);
     $Slic3r::GUI::Settings->{presets}{$self->name} = $preset->{file} ? basename($preset->{file}) : '';
     Slic3r::GUI->save_settings;
+}
+
+sub get_preset_config {
+    my $self = shift;
+    my ($preset) = @_;
+    
+    if ($preset->{default}) {
+        return Slic3r::Config->new_from_defaults(@{$self->{options}});
+    } else {
+        if (!-e $preset->{file}) {
+            Slic3r::GUI::show_error($self, "The selected preset does not exist anymore ($preset->{file}).");
+            return;
+        }
+        
+        # apply preset values on top of defaults
+        my $external_config = Slic3r::Config->load($preset->{file});
+        my $config = Slic3r::Config->new;
+        $config->set($_, $external_config->get($_))
+            for grep $external_config->has($_), @{$self->{options}};
+        
+        return $config;
+    }
 }
 
 sub add_options_page {
@@ -344,12 +367,7 @@ sub load_external_config {
 
 sub sync_presets {
     my $self = shift;
-    return unless $self->{sync_presets_with};
-    $self->{sync_presets_with}->Clear;
-    foreach my $item ($self->{presets_choice}->GetStrings) {
-        $self->{sync_presets_with}->Append($item);
-    }
-    $self->{sync_presets_with}->SetSelection($self->{presets_choice}->GetSelection);
+    $self->{plater}->update_presets($self->name, [$self->{presets_choice}->GetStrings], $self->{presets_choice}->GetSelection);
 }
 
 package Slic3r::GUI::Tab::Print;
@@ -379,7 +397,11 @@ sub build {
     $self->add_options_page('Infill', 'shading.png', optgroups => [
         {
             title => 'Infill',
-            options => [qw(fill_density fill_angle fill_pattern solid_fill_pattern infill_every_layers)],
+            options => [qw(fill_density fill_pattern solid_fill_pattern)],
+        },
+        {
+            title => 'Advanced',
+            options => [qw(infill_every_layers fill_angle)],
         },
     ]);
     
@@ -440,6 +462,13 @@ sub build {
         },
     ]);
     
+    $self->add_options_page('Multiple Extruders', 'funnel.png', optgroups => [
+        {
+            title => 'Extruders',
+            options => [qw(perimeter_extruder infill_extruder support_material_extruder)],
+        },
+    ]);
+    
     $self->add_options_page('Advanced', 'wrench.png', optgroups => [
         {
             title => 'Extrusion width',
@@ -450,10 +479,10 @@ sub build {
             title => 'Flow',
             options => [qw(bridge_flow_ratio)],
         },
-        {
+        $Slic3r::have_threads ? {
             title => 'Other',
-            options => [($Slic3r::have_threads ? qw(threads) : ())],
-        },
+            options => [qw(threads)],
+        } : (),
     ]);
 }
 
@@ -554,7 +583,7 @@ sub build {
     $self->_build_extruder_pages;
 }
 
-sub _extruder_options { qw(nozzle_diameter) }
+sub _extruder_options { qw(nozzle_diameter extruder_offset retract_length retract_lift retract_speed retract_restart_extra retract_before_travel) }
 
 sub config {
     my $self = shift;
@@ -580,8 +609,15 @@ sub _build_extruder_pages {
                 options => ['nozzle_diameter#' . $extruder_idx],
             },
             {
+                title => 'Position (for multi-extruder printers)',
+                options => ['extruder_offset#' . $extruder_idx],
+            },
+            {
                 title => 'Retraction',
-                options => [qw(retract_length retract_lift retract_speed retract_restart_extra retract_before_travel)],
+                options => [
+                    map "${_}#${extruder_idx}",
+                        qw(retract_length retract_lift retract_speed retract_restart_extra retract_before_travel)
+                ],
             },
         ]);
         $self->{extruder_pages}[$extruder_idx]{disabled} = 0;
@@ -627,6 +663,17 @@ sub on_preset_loaded {
         # update extruder page list
         $self->on_value_change('extruders_count');
     }
+}
+
+sub load_external_config {
+    my $self = shift;
+    $self->SUPER::load_external_config(@_);
+    
+    Slic3r::GUI::warning_catcher($self)->(
+        "Your configuration was imported. However, Slic3r is currently only able to import settings "
+        . "for the first defined filament. We recommend you don't use exported configuration files "
+        . "for multi-extruder setups and rely on the built-in preset management system instead.")
+        if @{ $self->{config}->nozzle_diameter } > 1;
 }
 
 package Slic3r::GUI::Tab::Page;
@@ -715,10 +762,10 @@ sub accept {
     my ($self, $event) = @_;
 
     if (($self->{chosen_name} = $self->{combo}->GetValue)) {
-        if ($self->{chosen_name} =~ /^[a-z0-9 _-]+$/i) {
+        if ($self->{chosen_name} =~ /^[^<>:\/\\|?*\"]+$/i) {
             $self->EndModal(wxID_OK);
         } else {
-            Slic3r::GUI::show_error($self, "The supplied name is not valid.");
+            Slic3r::GUI::show_error($self, "The supplied name is not valid; the following characters are not allowed: <>:/\|?*\"");
         }
     }
 }
