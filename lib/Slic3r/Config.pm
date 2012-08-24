@@ -348,7 +348,15 @@ our $Options = {
         min     => 1,
         default => 1,
     },
-    
+    # jmg options
+    'early_stop' => {
+        label   => 'Early Stop',
+        tooltip => 'Perimeter early stop as ratio to extrusion width.',
+        sidetext => 'mm or % (leave 0 for auto)',
+        cli     => 'early-stop=s',
+        type    => 'f',
+        default => 0,
+    },
     # flow options
     'extrusion_width' => {
         label   => 'Default extrusion width',
