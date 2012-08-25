@@ -7,9 +7,11 @@ use constant OPTIONS => [qw(
     extruder_offset
     nozzle_diameter filament_diameter extrusion_multiplier temperature first_layer_temperature
     retract_length retract_lift retract_speed retract_restart_extra retract_before_travel
+    retract_length_toolchange retract_restart_extra_toolchange
 )];
 has $_ => (is => 'ro', required => 1) for @{&OPTIONS};
 
+has 'retracted'                 => (is => 'rw', default => sub {0} );
 has 'e_per_mm3'                 => (is => 'lazy');
 has 'retract_speed_mm_min'      => (is => 'lazy');
 has '_mm3_per_mm_cache'         => (is => 'ro', default => sub {{}});

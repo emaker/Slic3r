@@ -112,11 +112,9 @@ sub add_object_from_mesh {
     $mesh->align_to_origin;
     
     # initialize print object
-    my @size = $mesh->size;
     my $object = Slic3r::Print::Object->new(
-        mesh     => $mesh,
-        x_length => $size[X],
-        y_length => $size[Y],
+        mesh => $mesh,
+        size => [ $mesh->size ],
     );
     
     push @{$self->objects}, $object;
@@ -201,8 +199,8 @@ sub duplicate {
         for my $x_copy (1..$Slic3r::Config->duplicate_grid->[X]) {
             for my $y_copy (1..$Slic3r::Config->duplicate_grid->[Y]) {
                 push @{$self->copies->[0]}, [
-                    ($object->x_length + $dist) * ($x_copy-1),
-                    ($object->y_length + $dist) * ($y_copy-1),
+                    ($object->size->[X] + $dist) * ($x_copy-1),
+                    ($object->size->[Y] + $dist) * ($y_copy-1),
                 ];
             }
         }
@@ -220,8 +218,8 @@ sub arrange_objects {
     my $total_parts = scalar map @$_, @{$self->copies};
     my $partx = my $party = 0;
     foreach my $object (@{$self->objects}) {
-        $partx = $object->x_length if $object->x_length > $partx;
-        $party = $object->y_length if $object->y_length > $party;
+        $partx = $object->size->[X] if $object->size->[X] > $partx;
+        $party = $object->size->[Y] if $object->size->[Y] > $party;
     }
     
     # object distance is max(duplicate_distance, clearance_radius)
@@ -246,9 +244,9 @@ sub bounding_box {
         foreach my $copy (@{$self->copies->[$obj_idx]}) {
             push @points,
                 [ $copy->[X], $copy->[Y] ],
-                [ $copy->[X] + $object->x_length, $copy->[Y] ],
-                [ $copy->[X] + $object->x_length, $copy->[Y] + $object->y_length ],
-                [ $copy->[X], $copy->[Y] + $object->y_length ];
+                [ $copy->[X] + $object->size->[X], $copy->[Y] ],
+                [ $copy->[X] + $object->size->[X], $copy->[Y] + $object->size->[Y] ],
+                [ $copy->[X], $copy->[Y] + $object->size->[Y] ];
         }
     }
     return Slic3r::Geometry::bounding_box(\@points);
@@ -479,7 +477,7 @@ sub make_skirt {
     $skirt_height = $self->layer_count if $skirt_height > $self->layer_count;
     my @points = ();
     foreach my $obj_idx (0 .. $#{$self->objects}) {
-        my @layers = map $self->objects->[$obj_idx]->layer($_), 0..($skirt_height-1);
+        my @layers = map $self->objects->[$obj_idx]->layers->[$_], 0..($skirt_height-1);
         my @layer_points = (
             (map @$_, map @{$_->expolygon}, map @{$_->slices}, @layers),
             (map @$_, map @{$_->thin_walls}, @layers),
@@ -497,7 +495,7 @@ sub make_skirt {
     my @skirt = ();
     for (my $i = $Slic3r::Config->skirts; $i > 0; $i--) {
         my $distance = scale ($Slic3r::Config->skirt_distance + ($flow->spacing * $i));
-        my $outline = offset([$convex_hull], $distance, &Slic3r::SCALING_FACTOR * 100, JT_ROUND);
+        my $outline = Math::Clipper::offset([$convex_hull], $distance, &Slic3r::SCALING_FACTOR * 100, JT_ROUND);
         push @skirt, Slic3r::ExtrusionLoop->pack(
             polygon => Slic3r::Polygon->new(@{$outline->[0]}),
             role => EXTR_ROLE_SKIRT,
@@ -566,16 +564,28 @@ sub write_gcode {
     my $gcodegen = Slic3r::GCode->new;
     my $min_print_speed = 60 * $Slic3r::Config->min_print_speed;
     my $dec = $gcodegen->dec;
-    print $fh $gcodegen->set_tool(0) if @$Slic3r::extruders > 1;
+    print $fh $gcodegen->set_tool(0);
     print $fh $gcodegen->set_fan(0, 1) if $Slic3r::Config->cooling && $Slic3r::Config->disable_fan_first_layers;
+    
+    # this spits out some platic at start from each extruder when they are first used;
+    # the primary extruder will compensate by the normal retraction length, while 
+    # the others will compensate for their toolchange length + restart extra.
+    # this is a temporary solution as all extruders should use some kind of skirt 
+    # to be put into a consistent state.
+    $_->retracted($_->retract_length_toolchange + $_->retract_restart_extra_toolchange)
+        for @{$Slic3r::extruders}[1 .. $#{$Slic3r::extruders}];
+    $gcodegen->retract;
     
     # write start commands to file
     printf $fh $gcodegen->set_bed_temperature($Slic3r::Config->first_layer_bed_temperature, 1),
-            if $Slic3r::Config->first_layer_bed_temperature && $Slic3r::Config->start_gcode !~ /M190/i;
-    for my $t (grep $Slic3r::extruders->[$_], 0 .. $#{$Slic3r::Config->first_layer_temperature}) {
-        printf $fh $gcodegen->set_temperature($Slic3r::extruders->[$t]->first_layer_temperature, 0, $t)
-            if $Slic3r::extruders->[$t]->first_layer_temperature;
-    }
+        if $Slic3r::Config->first_layer_bed_temperature && $Slic3r::Config->start_gcode !~ /M190/i;
+    my $print_first_layer_temperature = sub {
+        for my $t (grep $Slic3r::extruders->[$_], 0 .. $#{$Slic3r::Config->first_layer_temperature}) {
+            printf $fh $gcodegen->set_temperature($Slic3r::extruders->[$t]->first_layer_temperature, 0, $t)
+                if $Slic3r::extruders->[$t]->first_layer_temperature;
+        }
+    };
+    $print_first_layer_temperature->();
     printf $fh "%s\n", $Slic3r::Config->replace_options($Slic3r::Config->start_gcode);
     for my $t (grep $Slic3r::extruders->[$_], 0 .. $#{$Slic3r::Config->first_layer_temperature}) {
         printf $fh $gcodegen->set_temperature($Slic3r::extruders->[$t]->first_layer_temperature, 1, $t)
@@ -740,8 +750,7 @@ sub write_gcode {
                     if ($layer_id == 0 && $finished_objects > 0) {
                         printf $fh $gcodegen->set_bed_temperature($Slic3r::Config->first_layer_bed_temperature),
                             if $Slic3r::Config->first_layer_bed_temperature;
-                        printf $fh $gcodegen->set_temperature($Slic3r::Config->first_layer_temperature)
-                            if $Slic3r::Config->first_layer_temperature;
+                        $print_first_layer_temperature->();
                     }
                     print $fh $extrude_layer->($layer_id, [[ $obj_idx, $copy ]]);
                 }

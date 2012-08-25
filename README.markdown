@@ -90,7 +90,6 @@ The author of the Silk icon set is Mark James.
         -o, --output <file> File to output gcode to (by default, the file will be saved
                             into the same directory as the input file using the 
                             --output-filename-format to generate the filename)
-        -j, --threads <num> Number of threads to use (1+, default: 2)
     
       Output options:
         --output-filename-format
@@ -127,7 +126,7 @@ The author of the Silk icon set is Mark James.
         --temperature       Extrusion temperature in degree Celsius, set 0 to disable (default: 200)
         --first-layer-temperature Extrusion temperature for the first layer, in degree Celsius,
                             set 0 to disable (default: same as --temperature)
-        --bed-temperature   Heated bed temperature in degree Celsius, set 0 to disable (default: 200)
+        --bed-temperature   Heated bed temperature in degree Celsius, set 0 to disable (default: 0)
         --first-layer-bed-temperature Heated bed temperature for the first layer, in degree Celsius,
                             set 0 to disable (default: same as --bed-temperature)
         
@@ -171,6 +170,12 @@ The author of the Silk icon set is Mark James.
         --layer-gcode       Load layer-change G-code from the supplied file (default: nothing).
         --extra-perimeters  Add more perimeters when needed (default: yes)
         --randomize-start   Randomize starting point across layers (default: yes)
+        --only-retract-when-crossing-perimeters
+                            Disable retraction when travelling between infill paths inside the same island.
+                            (default: no)
+        --solid-infill-below-area
+                            Force solid infill when a region has a smaller area than this threshold
+                            (mm^2, default: 70)
       
        Support material options:
         --support-material  Generate support material for overhangs
@@ -184,8 +189,7 @@ The author of the Silk icon set is Mark James.
                             Support material angle in degrees (range: 0-90, default: 0)
       
        Retraction options:
-        --retract-length    Length of retraction in mm when pausing extrusion 
-                            (default: 1)
+        --retract-length    Length of retraction in mm when pausing extrusion (default: 1)
         --retract-speed     Speed for retraction in mm/s (default: 30)
         --retract-restart-extra
                             Additional amount of filament in mm to push after
@@ -193,6 +197,13 @@ The author of the Silk icon set is Mark James.
         --retract-before-travel
                             Only retract before travel moves of this length in mm (default: 2)
         --retract-lift      Lift Z by the given distance in mm when retracting (default: 0)
+        
+       Retraction options for multi-extruder setups:
+        --retract-length-toolchange
+                            Length of retraction in mm when disabling tool (default: 1)
+        --retract-restart-extra-toolchnage
+                            Additional amount of filament in mm to push after
+                            switching tool (default: 0)
        
        Cooling options:
         --cooling           Enable fan and cooling control
@@ -247,15 +258,15 @@ The author of the Silk icon set is Mark James.
         --support-material-extrusion-width
                             Set a different extrusion width for support material
         --bridge-flow-ratio Multiplier for extrusion when bridging (> 0, default: 1)
-  
+      
        Multiple extruder options:
+        --extruder-offset   Offset of each extruder, if firmware doesn't handle the displacement
+                            (can be specified multiple times, default: 0x0)
         --perimeters-extruder
                             Extruder to use for perimeters (1+, default: 1)
         --infill-extruder   Extruder to use for infill (1+, default: 1)
         --support-material-extruder
                             Extruder to use for support material (1+, default: 1)
-            
-
 
 If you want to change a preset file, just do
 

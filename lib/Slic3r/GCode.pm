@@ -1,8 +1,9 @@
 package Slic3r::GCode;
 use Moo;
 
+use List::Util qw(first);
 use Slic3r::ExtrusionPath ':roles';
-use Slic3r::Geometry qw(scale unscale);
+use Slic3r::Geometry qw(scale unscale points_coincide PI X Y);
 
 has 'layer'              => (is => 'rw');
 has 'shift_x'            => (is => 'rw', default => sub {0} );
@@ -10,7 +11,7 @@ has 'shift_y'            => (is => 'rw', default => sub {0} );
 has 'z'                  => (is => 'rw', default => sub {0} );
 has 'speed'              => (is => 'rw');
 
-has 'extruder_idx'       => (is => 'rw', default => sub {0});
+has 'extruder_idx'       => (is => 'rw');
 has 'extrusion_distance' => (is => 'rw', default => sub {0} );
 has 'elapsed_time'       => (is => 'rw', default => sub {0} );  # seconds
 has 'total_extrusion_length' => (is => 'rw', default => sub {0} );
@@ -53,8 +54,6 @@ my %role_speeds = (
     &EXTR_ROLE_SUPPORTMATERIAL              => 'perimeter',
     &EXTR_ROLE_HOLE                         => 'external_perimeter',
 );
-
-use Slic3r::Geometry qw(points_coincide PI X Y);
 
 sub extruder {
     my $self = shift;
@@ -149,7 +148,7 @@ sub extrude_path {
     my $gcode = "";
     
     # retract if distance from previous position is greater or equal to the one
-    # specified by the user *and* to the maximum distance between infill lines
+    # specified by the user
     {
         my $distance_from_last_pos = $self->last_pos->distance_to($path->points->[0]) * &Slic3r::SCALING_FACTOR;
         my $distance_threshold = $self->extruder->retract_before_travel;
@@ -176,7 +175,7 @@ sub extrude_path {
         if !points_coincide($self->last_pos, $path->points->[0]);
     
     # compensate retraction
-    $gcode .= $self->unretract if $self->retracted;
+    $gcode .= $self->unretract if $self->extruder->retracted;
     
     my $area;  # mm^3 of extrudate per mm of tool movement 
     if ($path->role == EXTR_ROLE_BRIDGE) {
@@ -272,12 +271,18 @@ sub retract {
     my $self = shift;
     my %params = @_;
     
-    return "" unless $self->extruder->retract_length > 0 
-        && !$self->retracted;
+    # get the retraction length and abort if none
+    my ($length, $restart_extra, $comment) = $params{toolchange}
+        ? ($self->extruder->retract_length_toolchange,  $self->extruder->retract_restart_extra_toolchange,  "retract for tool change")
+        : ($self->extruder->retract_length,             $self->extruder->retract_restart_extra,             "retract");
+    
+    # if we already retracted, reduce the required amount of retraction
+    $length -= $self->extruder->retracted;
+    return "" unless $length > 0;
     
     # prepare moves
     $self->speed('retract');
-    my $retract = [undef, undef, -$self->extruder->retract_length, "retract"];
+    my $retract = [undef, undef, -$length, $comment];
     my $lift    = ($self->extruder->retract_lift == 0 || defined $params{move_z})
         ? undef
         : [undef, $self->z + $self->extruder->retract_lift, 0, 'lift plate during retraction'];
@@ -290,12 +295,12 @@ sub retract {
             $gcode .= $self->G0(@$lift);
         } else {
             # combine travel and retract
-            my $travel = [$params{travel_to}, undef, $retract->[2], 'travel and retract'];
+            my $travel = [$params{travel_to}, undef, $retract->[2], "travel and $comment"];
             $gcode .= $self->G0(@$travel);
         }
     } elsif (($Slic3r::Config->g0 || $Slic3r::Config->gcode_flavor eq 'mach3') && defined $params{move_z}) {
         # combine Z change and retraction
-        my $travel = [undef, $params{move_z}, $retract->[2], 'change layer and retract'];
+        my $travel = [undef, $params{move_z}, $retract->[2], "change layer and $comment"];
         $gcode .= $self->G0(@$travel);
     } else {
     	#print "retract move\n" if defined $params{retract_move_to};
@@ -309,7 +314,7 @@ sub retract {
             $gcode .= $self->G1(@$lift);
         }
     }
-    $self->retracted(1);
+    $self->extruder->retracted($self->extruder->retracted + $length + $restart_extra);
     $self->lifted($self->extruder->retract_lift) if $lift;
     
     # reset extrusion distance during retracts
@@ -323,7 +328,6 @@ sub unretract {
     my $self = shift;
     my %params = @_;
     
-    $self->retracted(0);
     my $gcode = "";
     
     if ($self->lifted) {
@@ -332,8 +336,9 @@ sub unretract {
     }
     
     $self->speed('retract');
-    $gcode .= $self->G1(defined $params{unretract_move_to} ? $params{unretract_move_to} : undef, undef, ($self->extruder->retract_length + $self->extruder->retract_restart_extra), 
+    $gcode .= $self->G1(defined $params{unretract_move_to} ? $params{unretract_move_to} : undef, undef, $self->extruder->retracted, 
         "compensate retraction");
+    $self->extruder->retracted(0);
     
     return $gcode;
 }
@@ -371,7 +376,6 @@ sub _G0_G1 {
     my ($gcode, $point, $z, $e, $comment) = @_;
     my $dec = $self->dec;
     
-    #if ($point && $point->distance_to($self->last_pos) > scale 0.05) {
     if ($point) {
         $gcode .= sprintf " X%.${dec}f Y%.${dec}f", 
             ($point->x * &Slic3r::SCALING_FACTOR) + $self->shift_x - $self->extruder->extruder_offset->[X], 
@@ -429,7 +433,7 @@ sub _Gx {
         my $speed_f = $speed eq 'retract'
             ? ($self->extruder->retract_speed_mm_min)
             : $self->speeds->{$speed};
-        if ($e && $self->layer->id == 0 && $comment !~ /retract/) {
+        if ($e && $self->layer && $self->layer->id == 0 && $comment !~ /retract/) {
             $speed_f = $Slic3r::Config->first_layer_speed =~ /^(\d+(?:\.\d+)?)%$/
                 ? ($speed_f * $1/100)
                 : $Slic3r::Config->first_layer_speed * 60;
@@ -457,13 +461,25 @@ sub set_tool {
     my $self = shift;
     my ($tool) = @_;
     
-    return "" if $self->extruder_idx == $tool;
+    # return nothing if this tool was already selected
+    return "" if (defined $self->extruder_idx) && ($self->extruder_idx == $tool);
     
+    # if we are running a single-extruder setup, just set the extruder and return nothing
+    if (@{$Slic3r::extruders} == 1) {
+        $self->extruder_idx($tool);
+        return "";
+    }
+    
+    # trigger retraction on the current tool (if any) 
+    my $gcode = "";
+    $gcode .= $self->retract(toolchange => 1) if defined $self->extruder_idx;
+    
+    # set the new tool
     $self->extruder_idx($tool);
-    return $self->retract
-        . (sprintf "T%d%s\n", $tool, ($Slic3r::Config->gcode_comments ? ' ; change tool' : ''))
-        . $self->reset_e
-        . $self->unretract;
+    $gcode .= sprintf "T%d%s\n", $tool, ($Slic3r::Config->gcode_comments ? ' ; change tool' : '');
+    $gcode .= $self->reset_e;
+    
+    return $gcode;
 }
 
 sub set_fan {

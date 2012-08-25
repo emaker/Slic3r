@@ -191,7 +191,6 @@ sub make_perimeters {
     # for each island:
     foreach my $surface (@surfaces) {
         my @last_offsets = ($surface->expolygon);
-        my $distance = 0;
         
         # experimental hole compensation (see ArcCompensation in the RepRap wiki)
         if (1) {
@@ -216,32 +215,29 @@ sub make_perimeters {
             }
         }
         
+        my $distance = scale $self->perimeter_flow->spacing;
         my @gaps = ();
         
-        # generate perimeters inwards
+        # generate perimeters inwards (loop 0 is the external one)
         my $loop_number = $Slic3r::Config->perimeters + ($surface->additional_inner_perimeters || 0);
-        push @perimeters, [];
-        for (my $loop = 0; $loop < $loop_number; $loop++) {
+        push @perimeters, [[@last_offsets]];
+        for (my $loop = 1; $loop < $loop_number; $loop++) {
             # offsetting a polygon can result in one or many offset polygons
-            if ($distance) {
-                my @new_offsets = ();
-                foreach my $expolygon (@last_offsets) {
-                    my @offsets = map $_->offset_ex(+0.5*$distance), $expolygon->offset_ex(-1.5*$distance);
-                    push @new_offsets, @offsets;
-                    
-                    my $diff = diff_ex(
-                        [ map @$_, $expolygon->offset_ex(-$distance) ],
-                        [ map @$_, @offsets ],
-                    );
-                    push @gaps, grep $_->area >= $gap_area_threshold, @$diff;
-                }
-                @last_offsets = @new_offsets;
+            my @new_offsets = ();
+            foreach my $expolygon (@last_offsets) {
+                my @offsets = map $_->offset_ex(+0.5*$distance), $expolygon->offset_ex(-1.5*$distance);
+                push @new_offsets, @offsets;
+                
+                my $diff = diff_ex(
+                    [ map @$_, $expolygon->offset_ex(-$distance) ],
+                    [ map @$_, @offsets ],
+                );
+                push @gaps, grep $_->area >= $gap_area_threshold, @$diff;
             }
+            @last_offsets = @new_offsets;
+            
             last if !@last_offsets;
             push @{ $perimeters[-1] }, [@last_offsets];
-            
-            # offset distance for inner loops
-            $distance = scale $self->perimeter_flow->spacing;
         }
         
         # create one more offset to be used as boundary for fill
@@ -318,7 +314,6 @@ sub make_perimeters {
             my $role = $depth == $#$island ? EXTR_ROLE_PERIMETER
                 : $depth == 0 ? EXTR_ROLE_EXTERNAL_PERIMETER
                 : EXTR_ROLE_PERIMETER;
-            #print "add perimter role is $role \n";        	
             $self->_add_perimeter($_, $role) for map $_->contour, @{$island->[$depth]};
         }
     }
@@ -368,13 +363,30 @@ sub prepare_fill_surfaces {
     if ($Slic3r::Config->fill_density == 0) {
         @surfaces = grep $_->surface_type != S_TYPE_INTERNAL, @surfaces;
     }
+    
+    # remove unprintable regions (they would slow down the infill process and also cause
+    # some weird failures during bridge neighbor detection)
+    {
+        my $distance = scale $self->infill_flow->spacing / 2;
+        @surfaces = map {
+            my $surface = $_;
+            
+            # offset inwards
+            my @offsets = $surface->expolygon->offset_ex(-$distance);
+            @offsets = @{union_ex(Math::Clipper::offset([ map @$_, @offsets ], $distance, 100, JT_MITER))};
+            map Slic3r::Surface->new(
+                expolygon => $_,
+                surface_type => $surface->surface_type,
+            ), @offsets;
+        } @surfaces;
+    }
         
     # turn too small internal regions into solid regions
     {
-        my $min_area = ((7 * $self->infill_flow->spacing / &Slic3r::SCALING_FACTOR)**2) * PI;
+        my $min_area = scale scale $Slic3r::Config->solid_infill_below_area; # scaling an area requires two calls!
         my @small = grep $_->surface_type == S_TYPE_INTERNAL && $_->expolygon->contour->area <= $min_area, @surfaces;
         $_->surface_type(S_TYPE_INTERNALSOLID) for @small;
-        Slic3r::debugf "identified %d small surfaces at layer %d\n", scalar(@small), $self->id if @small > 0;
+        Slic3r::debugf "identified %d small solid surfaces at layer %d\n", scalar(@small), $self->id if @small > 0;
     }
     
     $self->fill_surfaces([@surfaces]);

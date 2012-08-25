@@ -27,6 +27,7 @@ my %cli_options = ();
         'save=s'                => \$opt{save},
         'load=s@'               => \$opt{load},
         'ignore-nonexistent-config' => \$opt{ignore_nonexistent_config},
+        'datadir=s'             => \$opt{datadir},
         'export-svg'            => \$opt{export_svg},
         'merge|m'               => \$opt{merge},
     );
@@ -71,6 +72,10 @@ if ($opt{save}) {
 my $gui;
 if (!@ARGV && !$opt{save} && eval "require Slic3r::GUI; 1") {
     $gui = Slic3r::GUI->new;
+    {
+        no warnings 'once';
+        $Slic3r::GUI::datadir = $opt{datadir} if $opt{datadir};
+    }
     $gui->{skeinpanel}->load_config_file($_) for @{$opt{load}};
     $gui->{skeinpanel}->load_config($cli_config);
     $gui->MainLoop;
@@ -94,7 +99,7 @@ if (@ARGV) {  # slicing from command line
             output_file => $opt{output},
             status_cb   => sub {
                 my ($percent, $message) = @_;
-                printf "=> $message\n";
+                printf "=> %s\n", $message;
             },
         );
         if ($opt{export_svg}) {
@@ -213,6 +218,12 @@ $j
     --layer-gcode       Load layer-change G-code from the supplied file (default: nothing).
     --extra-perimeters  Add more perimeters when needed (default: yes)
     --randomize-start   Randomize starting point across layers (default: yes)
+    --only-retract-when-crossing-perimeters
+                        Disable retraction when travelling between infill paths inside the same island.
+                        (default: no)
+    --solid-infill-below-area
+                        Force solid infill when a region has a smaller area than this threshold
+                        (mm^2, default: $config->{solid_infill_below_area})
   
    Support material options:
     --support-material  Generate support material for overhangs
@@ -226,8 +237,7 @@ $j
                         Support material angle in degrees (range: 0-90, default: $config->{support_material_angle})
   
    Retraction options:
-    --retract-length    Length of retraction in mm when pausing extrusion 
-                        (default: $config->{retract_length}[0])
+    --retract-length    Length of retraction in mm when pausing extrusion (default: $config->{retract_length}[0])
     --retract-speed     Speed for retraction in mm/s (default: $config->{retract_speed}[0])
     --retract-restart-extra
                         Additional amount of filament in mm to push after
@@ -235,6 +245,13 @@ $j
     --retract-before-travel
                         Only retract before travel moves of this length in mm (default: $config->{retract_before_travel}[0])
     --retract-lift      Lift Z by the given distance in mm when retracting (default: $config->{retract_lift}[0])
+    
+   Retraction options for multi-extruder setups:
+    --retract-length-toolchange
+                        Length of retraction in mm when disabling tool (default: $config->{retract_length}[0])
+    --retract-restart-extra-toolchnage
+                        Additional amount of filament in mm to push after
+                        switching tool (default: $config->{retract_restart_extra}[0])
    
    Cooling options:
     --cooling           Enable fan and cooling control
