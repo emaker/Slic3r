@@ -481,7 +481,7 @@ sub build {
         },
         $Slic3r::have_threads ? {
             title => 'Other',
-            options => [qw(threads)],
+            options => [qw(threads early_stop)],
         } : (),
     ]);
 }
