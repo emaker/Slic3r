@@ -239,7 +239,7 @@ sub extrude_path {
         }
         if ($path->role == 3 || $path->role == 0 || (($path->role == 10 || $path->role == 2) && $Slic3r::Config->early_stop)) {
         #if ($path->role == 3 || $path->role == 0) {
-	        $gcode .= $self->G0($path_end, undef, undef, $description . $path->role);
+	        $gcode .= $self->G1($path_end, undef, undef, $description . $path->role);
 	    }
     }
     
@@ -362,6 +362,7 @@ sub set_acceleration {
 
 sub G0 {
     my $self = shift;
+    $self->speed( $role_speeds{'travel'} );
     return $self->G1(@_) if !($Slic3r::Config->g0 || $Slic3r::Config->gcode_flavor eq 'mach3');
     return $self->_G0_G1("G0", @_);
 }
@@ -417,7 +418,8 @@ sub _Gx {
     my $dec = $self->dec;
     
     # determine speed
-    my $speed = ($e ? $self->speed : 'travel');
+    #my $speed = ($e ? $self->speed : 'travel');
+    my $speed = defined $self->speed ? $self->speed : 'travel';
     
     # output speed if it's different from last one used
     # (goal: reduce gcode size)
