@@ -812,7 +812,7 @@ END
         cli     => 'duplicate-distance=f',
         type    => 'f',
         aliases => [qw(multiply_distance)],
-        default => 6,
+        default => 2,
     },
     
     # sequential printing options

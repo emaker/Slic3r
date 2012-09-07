@@ -94,8 +94,8 @@ sub extrude_loop {
     # extrude all loops ccw
     $loop = $loop->unpack if $loop->isa('Slic3r::ExtrusionLoop::Packed');
     #print "loop role ";print $loop->role;print "\n";
-    $loop->polygon->make_counter_clockwise if ($loop->role == 10);
-    $loop->polygon->make_clockwise if ($loop->role == 2);
+    $loop->polygon->make_counter_clockwise if ($loop->role == 2);
+    $loop->polygon->make_clockwise if ($loop->role == 10);
     
     # find the point of the loop that is closest to the current extruder position
     # or randomize if requested

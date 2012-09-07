@@ -25,7 +25,7 @@ my $build = Module::Build->new(
     },
     recommends     => {
         'Growl::GNTP' => '0.15',
-        'Net::DBus'   => '0',
+        #'Net::DBus'   => '0',
         'XML::SAX'    => '0',
         'Wx'          => '0.9901',
     },
