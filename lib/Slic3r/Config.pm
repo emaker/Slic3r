@@ -357,6 +357,14 @@ our $Options = {
         type    => 'f',
         default => 0,
     },
+    'early_stop_inner' => {
+        label   => 'Early Stop Inner',
+        tooltip => 'Inner perimeter early stop as ratio to extrusion width.',
+        sidetext => 'mm or % (leave 0 for auto)',
+        cli     => 'early-stop-inner=s',
+        type    => 'f',
+        default => 0,
+    },
     # flow options
     'extrusion_width' => {
         label   => 'Default extrusion width',

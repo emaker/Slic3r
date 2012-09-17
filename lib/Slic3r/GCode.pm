@@ -220,8 +220,8 @@ sub extrude_path {
         $gcode .= $self->G2_G3($path->points->[-1], $path->orientation, 
             $path->center, $e * unscale $path_length, $description);
     } else {
-		if($path->role == 3 || $path->role == 0) {
-			my $d = scale ($self->layer ? $self->layer->flow->spacing : $Slic3r::flow->spacing) * 1.5;
+		if($path->role == 3 || $path->role == 0 && $Slic3r::Config->early_stop_inner) {
+			my $d = scale ($self->layer ? $self->layer->flow->spacing : $Slic3r::flow->spacing) * $Slic3r::Config->early_stop_inner;#1.5;
 			$path_end=Slic3r::Point->new($path->points->[-1]);
 			$path->clip_end($d);
 		}
