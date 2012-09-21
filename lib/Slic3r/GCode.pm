@@ -3,7 +3,7 @@ use Moo;
 
 use List::Util qw(first);
 use Slic3r::ExtrusionPath ':roles';
-use Slic3r::Geometry qw(scale unscale points_coincide PI X Y);
+use Slic3r::Geometry qw(scale unscale scaled_epsilon points_coincide PI X Y);
 
 has 'layer'              => (is => 'rw');
 has 'shift_x'            => (is => 'rw', default => sub {0} );
@@ -15,7 +15,6 @@ has 'extruder_idx'       => (is => 'rw');
 has 'extrusion_distance' => (is => 'rw', default => sub {0} );
 has 'elapsed_time'       => (is => 'rw', default => sub {0} );  # seconds
 has 'total_extrusion_length' => (is => 'rw', default => sub {0} );
-has 'retracted'          => (is => 'rw', default => sub {1} );  # this spits out some plastic at start
 has 'lifted'             => (is => 'rw', default => sub {0} );
 has 'last_pos'           => (is => 'rw', default => sub { Slic3r::Point->new(0,0) } ); # end point of previous loop
 has 'pen_pos'           => (is => 'rw', default => sub { Slic3r::Point->new(0,0) } ); # penultimate point of previous loop
@@ -150,23 +149,21 @@ sub extrude_path {
     # retract if distance from previous position is greater or equal to the one
     # specified by the user
     {
-        my $distance_from_last_pos = $self->last_pos->distance_to($path->points->[0]) * &Slic3r::SCALING_FACTOR;
-        my $distance_threshold = $self->extruder->retract_before_travel;
-        $distance_threshold = 2 * ($self->layer ? $self->layer->flow->width : $Slic3r::flow->width) / $Slic3r::Config->fill_density * sqrt(2)
-            if 0 && $Slic3r::Config->fill_density > 0 && $description =~ /fill/;
-    
-        if ($distance_from_last_pos >= $distance_threshold) {
-        	#print "retract req. dist pen -> last";print $self->pen_pos->distance_to($self->last_pos) * $Slic3r::scaling_factor;print "\n";
-        	if (defined $self->retract_pos && defined $self->prev_role && ($self->prev_role == 10 || $self->prev_role == 2)) {
-	        	#jmg - retract to one extrusion width towards next thread
-	        	#print "retract move ";print $path->role;print " \n";
-	        	#print " from X";print unscale $self->last_pos->x;print " to Y";print unscale $self->last_pos->y;print "\n";
-	        	#print " to X";print unscale $self->retract_pos->x;print " to Y";print unscale $self->retract_pos->y;print "\n";
-	            $gcode .= $self->retract(retract_move_to => $self->retract_pos);
-	        } else {
-	        	#print "retract stat ";print $path->role if defined $path->role;print "\n";
-            	$gcode .= $self->retract(travel_to => $path->points->[0]);
-           	}
+        my $travel = Slic3r::Line->new($self->last_pos, $path->points->[0]);
+        if ($travel->length >= scale $self->extruder->retract_before_travel) {
+            if (!$Slic3r::Config->only_retract_when_crossing_perimeters || $path->role != EXTR_ROLE_FILL || !first { $_->expolygon->encloses_line($travel, scaled_epsilon) } @{$self->layer->slices}) {
+       	#print "retract req. dist pen -> last";print $self->pen_pos->distance_to($self->last_pos) * $Slic3r::scaling_factor;print "\n";
+		    	if (defined $self->retract_pos && defined $self->prev_role && ($self->prev_role == 10 || $self->prev_role == 2)) {
+			    	#jmg - retract to one extrusion width towards next thread
+			    	#print "retract move ";print $path->role;print " \n";
+			    	#print " from X";print unscale $self->last_pos->x;print " to Y";print unscale $self->last_pos->y;print "\n";
+			    	#print " to X";print unscale $self->retract_pos->x;print " to Y";print unscale $self->retract_pos->y;print "\n";
+			        $gcode .= $self->retract(retract_move_to => $self->retract_pos);
+			    } else {
+			    	#print "retract stat ";print $path->role if defined $path->role;print "\n";
+		        	$gcode .= $self->retract(travel_to => $path->points->[0]);
+		       	}
+		    }
         }
     }
     
@@ -193,7 +190,7 @@ sub extrude_path {
     
     # compensate retraction
 	my $first_e = -1;
-    if ($self->retracted) {
+    if ($self->extruder->retracted) {
 		my $distance_to_next_point = $path->points->[0]->distance_to($path->points->[1]);
 		#print "first dist "; print unscale $distance_to_next_point;print " \n";
 		my $unretract_to = Slic3r::Point->new($path->points->[1]);
@@ -506,25 +503,34 @@ sub set_temperature {
     
     return "" if $wait && $Slic3r::Config->gcode_flavor eq 'makerbot';
     
-    my ($code, $comment) = $wait
+    my ($code, $comment) = ($wait && $Slic3r::Config->gcode_flavor ne 'teacup')
         ? ('M109', 'wait for temperature to be reached')
         : ('M104', 'set temperature');
-    return sprintf "$code %s%d %s; $comment\n",
+    my $gcode = sprintf "$code %s%d %s; $comment\n",
         ($Slic3r::Config->gcode_flavor eq 'mach3' ? 'P' : 'S'), $temperature,
         (defined $tool && $tool != $self->extruder_idx) ? "T$tool " : "";
+    
+    $gcode .= "M116 ; wait for temperature to be reached\n"
+        if $Slic3r::Config->gcode_flavor eq 'teacup' && $wait;
+    
+    return $gcode;
 }
 
 sub set_bed_temperature {
     my $self = shift;
     my ($temperature, $wait) = @_;
     
-    my ($code, $comment) = $wait
+    my ($code, $comment) = ($wait && $Slic3r::Config->gcode_flavor ne 'teacup')
         ? (($Slic3r::Config->gcode_flavor eq 'makerbot' ? 'M109'
-            : $Slic3r::Config->gcode_flavor eq 'teacup' ? 'M109 P1'
             : 'M190'), 'wait for bed temperature to be reached')
         : ('M140', 'set bed temperature');
-    return sprintf "$code %s%d ; $comment\n",
+    my $gcode = sprintf "$code %s%d ; $comment\n",
         ($Slic3r::Config->gcode_flavor eq 'mach3' ? 'P' : 'S'), $temperature;
+    
+    $gcode .= "M116 ; wait for bed temperature to be reached\n"
+        if $Slic3r::Config->gcode_flavor eq 'teacup' && $wait;
+    
+    return $gcode;
 }
 
 1;
