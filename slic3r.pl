@@ -1,5 +1,8 @@
 #!/usr/bin/perl
 
+# disable buffering
+$| = 1;
+
 use strict;
 use warnings;
 
@@ -71,11 +74,11 @@ if ($opt{save}) {
 # launch GUI
 my $gui;
 if (!@ARGV && !$opt{save} && eval "require Slic3r::GUI; 1") {
-    $gui = Slic3r::GUI->new;
     {
         no warnings 'once';
         $Slic3r::GUI::datadir = $opt{datadir} if $opt{datadir};
     }
+    $gui = Slic3r::GUI->new;
     $gui->{skeinpanel}->load_config_file($_) for @{$opt{load}};
     $gui->{skeinpanel}->load_config($cli_config);
     $gui->MainLoop;

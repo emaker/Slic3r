@@ -251,6 +251,9 @@ sub extrude_path {
     }
     #define position to retract to
     if ($path->role == 10 || $path->role == 2) {
+    	if($self->prev_role != 3 && $self->prev_role != 0){
+    		$self->old_start($path->points->[0]);
+    	}
    		if($path->points->[-1]->distance_to($self->old_start) <= scale ($self->layer ? $self->layer->flow->spacing : $Slic3r::flow->spacing) * 3) {
    			my $m = 1.0;
    			$self->retract_pos(Slic3r::Point->new( ($self->old_start->x - $path->points->[-1]->x) * $m +  $path->points->[-1]->x, ($self->old_start->y - $path->points->[-1]->y) * $m +  $path->points->[-1]->y) );
