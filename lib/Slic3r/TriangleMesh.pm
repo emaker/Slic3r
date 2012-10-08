@@ -404,7 +404,7 @@ sub slice_facet {
     my @vertices = @{$self->facets->[$facet_id]}[-3..-1];
     Slic3r::debugf "\n==> FACET %d (%f,%f,%f - %f,%f,%f - %f,%f,%f):\n",
         $facet_id, map @{$self->vertices->[$_]}, @vertices
-        if $Slic3r::debug;
+        if 0;#$Slic3r::debug;
     
     # find the vertical extents of the facet
     my ($min_z, $max_z) = (99999999999, -99999999999);

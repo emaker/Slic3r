@@ -56,7 +56,7 @@ eval "use Slic3r::Build";
 
 use constant SCALING_FACTOR         => 0.000001;
 use constant RESOLUTION             => 0.01;
-use constant OVERLAP_FACTOR         => 0.5;
+use constant OVERLAP_FACTOR         => 0.51;
 use constant SMALL_PERIMETER_LENGTH => (6.5 / SCALING_FACTOR) * 2 * PI;
 
 # The following variables hold the objects used throughout the slicing
