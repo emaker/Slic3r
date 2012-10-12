@@ -1,9 +1,8 @@
 package Slic3r::GCode;
 use Moo;
 
-use List::Util qw(first);
 use Slic3r::ExtrusionPath ':roles';
-use Slic3r::Geometry qw(scale unscale scaled_epsilon points_coincide PI X Y);
+use Slic3r::Geometry qw(scale unscale);
 
 has 'layer'              => (is => 'rw');
 has 'shift_x'            => (is => 'rw', default => sub {0} );
@@ -53,6 +52,8 @@ my %role_speeds = (
     &EXTR_ROLE_SUPPORTMATERIAL              => 'perimeter',
     &EXTR_ROLE_HOLE                         => 'external_perimeter',
 );
+
+use Slic3r::Geometry qw(points_coincide PI X Y);
 
 sub extruder {
     my $self = shift;
@@ -149,10 +150,12 @@ sub extrude_path {
     # retract if distance from previous position is greater or equal to the one
     # specified by the user
     {
-        my $travel = Slic3r::Line->new($self->last_pos, $path->points->[0]);
-        if ($travel->length >= scale $self->extruder->retract_before_travel) {
-            if (!$Slic3r::Config->only_retract_when_crossing_perimeters || $path->role != EXTR_ROLE_FILL || !first { $_->expolygon->encloses_line($travel, scaled_epsilon) } @{$self->layer->slices}) {
-       	#print "retract req. dist pen -> last";print $self->pen_pos->distance_to($self->last_pos) * $Slic3r::scaling_factor;print "\n";
+        my $distance_from_last_pos = $self->last_pos->distance_to($path->points->[0]) * &Slic3r::SCALING_FACTOR;
+        my $distance_threshold = $self->extruder->retract_before_travel;
+        $distance_threshold = 2 * ($self->layer ? $self->layer->flow->width : $Slic3r::flow->width) / $Slic3r::Config->fill_density * sqrt(2)
+            if 0 && $Slic3r::Config->fill_density > 0 && $description =~ /fill/;
+    
+        if ($distance_from_last_pos >= $distance_threshold) {
 		    	if (defined $self->retract_pos && defined $self->prev_role && ($self->prev_role == 10 || $self->prev_role == 2)) {
 			    	#jmg - retract to one extrusion width towards next thread
 			    	#print "retract move ";print $path->role;print " \n";
@@ -165,7 +168,6 @@ sub extrude_path {
 		       	}
 		    }
         }
-    }
     
     # go to first point of extrusion path
     $gcode .= $self->G0($path->points->[0], undef, 0, "move to first $description point")

@@ -94,8 +94,7 @@ sub fill_surface {
         paths => [ map Slic3r::ExtrusionPath->pack(polyline => $_, role => -1), @paths ],
     );
     
-    return { flow_spacing => $params{flow_spacing} },
-        map $_->polyline, $collection->shortest_path;
+    return {}, map $_->polyline, $collection->shortest_path;
 }
 
 1;

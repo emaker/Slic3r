@@ -3,15 +3,13 @@ use Moo;
 
 use File::Basename qw(basename fileparse);
 use File::Spec;
-use List::Util qw(max);
 use Math::ConvexHull 1.0.4 qw(convex_hull);
 use Slic3r::ExtrusionPath ':roles';
-use Slic3r::Geometry qw(X Y Z X1 Y1 X2 Y2 PI scale unscale move_points nearest_point);
+use Slic3r::Geometry qw(X Y Z X1 Y1 X2 Y2 PI scale unscale move_points);
 use Slic3r::Geometry::Clipper qw(diff_ex union_ex intersection_ex offset JT_ROUND JT_SQUARE);
 use Time::HiRes qw(gettimeofday tv_interval);
 
 has 'config'                 => (is => 'rw', default => sub { Slic3r::Config->new_from_defaults }, trigger => 1);
-has 'extra_variables'        => (is => 'rw', default => sub {{}});
 has 'objects'                => (is => 'rw', default => sub {[]});
 has 'copies'                 => (is => 'rw', default => sub {[]});  # obj_idx => [copies...]
 has 'total_extrusion_length' => (is => 'rw');
@@ -44,14 +42,6 @@ sub _trigger_config {
     # store config in a handy place
     $Slic3r::Config = $self->config;
     
-    # legacy with existing config files
-    $self->config->set('first_layer_height', $self->config->layer_height)
-        if !$self->config->first_layer_height;
-    $self->config->set_ifndef('small_perimeter_speed',  $self->config->perimeter_speed);
-    $self->config->set_ifndef('bridge_speed',           $self->config->infill_speed);
-    $self->config->set_ifndef('solid_infill_speed',     $self->config->infill_speed);
-    $self->config->set_ifndef('top_solid_infill_speed', $self->config->solid_infill_speed);
-    
     # initialize extruder(s)
     $Slic3r::extruders = [];
     for my $t (0, map $_-1, map $self->config->get($_), qw(perimeter_extruder infill_extruder support_material_extruder)) {
@@ -81,57 +71,52 @@ sub _trigger_config {
     # G-code flavors
     $self->config->set('extrusion_axis', 'A') if $self->config->gcode_flavor eq 'mach3';
     $self->config->set('extrusion_axis', '')  if $self->config->gcode_flavor eq 'no-extrusion';
+    
+    # legacy with existing config files
+    $self->config->set_ifndef('small_perimeter_speed',  $self->config->perimeter_speed);
+    $self->config->set_ifndef('bridge_speed',           $self->config->infill_speed);
+    $self->config->set_ifndef('solid_infill_speed',     $self->config->infill_speed);
+    $self->config->set_ifndef('top_solid_infill_speed', $self->config->solid_infill_speed);
 }
 
-sub add_objects_from_file {
+sub add_object_from_file {
     my $self = shift;
     my ($input_file) = @_;
     
-    my $model = Slic3r::Model->read_from_file($input_file);
-    
-    my @print_objects = $self->add_model($model);
-    $_->input_file($input_file) for @print_objects;
-}
-
-sub add_model {
-    my $self = shift;
-    my ($model) = @_;
-    
-    my @print_objects = ();
-    foreach my $object (@{ $model->objects }) {
-        my $mesh = $object->volumes->[0]->mesh;
+    my $object;
+    if ($input_file =~ /\.stl$/i) {
+        my $mesh = Slic3r::Format::STL->read_file($input_file);
         $mesh->check_manifoldness;
-        
-        if ($object->instances) {
-            # we ignore the per-instance rotation currently and only 
-            # consider the first one
-            $mesh->rotate($object->instances->[0]->rotation);
-        }
-        
-        push @print_objects, $self->add_object_from_mesh($mesh, input_file => $object->input_file);
-        
-        if ($object->instances) {
-            # replace the default [0,0] instance with the custom ones
-            @{$self->copies->[-1]} = map [ scale $_->offset->[X], scale $_->offset->[Y] ], @{$object->instances};
-        }
+        $object = $self->add_object_from_mesh($mesh);
+    } elsif ($input_file =~ /\.obj$/i) {
+        my $mesh = Slic3r::Format::OBJ->read_file($input_file);
+        $mesh->check_manifoldness;
+        $object = $self->add_object_from_mesh($mesh);
+    } elsif ( $input_file =~ /\.amf(\.xml)?$/i) {
+        my ($materials, $meshes_by_material) = Slic3r::Format::AMF->read_file($input_file);
+        $_->check_manifoldness for values %$meshes_by_material;
+        $object = $self->add_object_from_mesh($meshes_by_material->{_} || +(values %$meshes_by_material)[0]);
+    } else {
+        die "Input file must have .stl, .obj or .amf(.xml) extension\n";
     }
-    
-    return @print_objects;
+    $object->input_file($input_file);
+    return $object;
 }
 
 sub add_object_from_mesh {
     my $self = shift;
-    my ($mesh, %attributes) = @_;
+    my ($mesh) = @_;
     
     $mesh->rotate($Slic3r::Config->rotate);
     $mesh->scale($Slic3r::Config->scale / &Slic3r::SCALING_FACTOR);
     $mesh->align_to_origin;
     
     # initialize print object
+    my @size = $mesh->size;
     my $object = Slic3r::Print::Object->new(
-        mesh => $mesh,
-        size => [ $mesh->size ],
-        %attributes,
+        mesh     => $mesh,
+        x_length => $size[X],
+        y_length => $size[Y],
     );
     
     push @{$self->objects}, $object;
@@ -216,8 +201,8 @@ sub duplicate {
         for my $x_copy (1..$Slic3r::Config->duplicate_grid->[X]) {
             for my $y_copy (1..$Slic3r::Config->duplicate_grid->[Y]) {
                 push @{$self->copies->[0]}, [
-                    ($object->size->[X] + $dist) * ($x_copy-1),
-                    ($object->size->[Y] + $dist) * ($y_copy-1),
+                    ($object->x_length + $dist) * ($x_copy-1),
+                    ($object->y_length + $dist) * ($y_copy-1),
                 ];
             }
         }
@@ -233,11 +218,19 @@ sub arrange_objects {
     my $self = shift;
 
     my $total_parts = scalar map @$_, @{$self->copies};
-    my $partx = max(map $_->size->[X], @{$self->objects});
-    my $party = max(map $_->size->[Y], @{$self->objects});
+    my $partx = my $party = 0;
+    foreach my $object (@{$self->objects}) {
+        $partx = $object->x_length if $object->x_length > $partx;
+        $party = $object->y_length if $object->y_length > $party;
+    }
+    
+    # object distance is max(duplicate_distance, clearance_radius)
+    my $distance = $Slic3r::Config->complete_objects && $Slic3r::Config->extruder_clearance_radius > $Slic3r::Config->duplicate_distance
+        ? $Slic3r::Config->extruder_clearance_radius
+        : $Slic3r::Config->duplicate_distance;
     
     my @positions = Slic3r::Geometry::arrange
-        ($total_parts, $partx, $party, (map scale $_, @{$Slic3r::Config->bed_size}), scale $Slic3r::Config->min_object_distance, $self->config);
+        ($total_parts, $partx, $party, (map scale $_, @{$Slic3r::Config->bed_size}), scale $distance);
     
     for my $obj_idx (0..$#{$self->objects}) {
         @{$self->copies->[$obj_idx]} = splice @positions, 0, scalar @{$self->copies->[$obj_idx]};
@@ -253,9 +246,9 @@ sub bounding_box {
         foreach my $copy (@{$self->copies->[$obj_idx]}) {
             push @points,
                 [ $copy->[X], $copy->[Y] ],
-                [ $copy->[X] + $object->size->[X], $copy->[Y] ],
-                [ $copy->[X] + $object->size->[X], $copy->[Y] + $object->size->[Y] ],
-                [ $copy->[X], $copy->[Y] + $object->size->[Y] ];
+                [ $copy->[X] + $object->x_length, $copy->[Y] ],
+                [ $copy->[X] + $object->x_length, $copy->[Y] + $object->y_length ],
+                [ $copy->[X], $copy->[Y] + $object->y_length ];
         }
     }
     return Slic3r::Geometry::bounding_box(\@points);
@@ -462,8 +455,7 @@ EOF
             foreach my $expolygon (@unsupported_slices) {
                 # look for the nearest point to this island among all
                 # supported points
-                my $support_point = nearest_point($expolygon->contour->[0], \@supported_points)
-                    or next;
+                my $support_point = nearest_point($expolygon->contour->[0], \@supported_points);
                 my $anchor_point = nearest_point($support_point, $expolygon->contour->[0]);
                 printf $fh qq{    <line x1="%s" y1="%s" x2="%s" y2="%s" style="stroke-width: 2; stroke: white" />\n},
                     map @$_, $support_point, $anchor_point;
@@ -505,7 +497,7 @@ sub make_skirt {
     my @skirt = ();
     for (my $i = $Slic3r::Config->skirts; $i > 0; $i--) {
         my $distance = scale ($Slic3r::Config->skirt_distance + ($flow->spacing * $i));
-        my $outline = Math::Clipper::offset([$convex_hull], $distance, &Slic3r::SCALING_FACTOR * 100, JT_ROUND);
+        my $outline = offset([$convex_hull], $distance, &Slic3r::SCALING_FACTOR * 100, JT_ROUND);
         push @skirt, Slic3r::ExtrusionLoop->pack(
             polygon => Slic3r::Polygon->new(@{$outline->[0]}),
             role => EXTR_ROLE_SKIRT,
@@ -577,6 +569,15 @@ sub write_gcode {
     print $fh $gcodegen->set_tool(0);
     print $fh $gcodegen->set_fan(0, 1) if $Slic3r::Config->cooling && $Slic3r::Config->disable_fan_first_layers;
     
+    # this spits out some platic at start from each extruder when they are first used;
+    # the primary extruder will compensate by the normal retraction length, while 
+    # the others will compensate for their toolchange length + restart extra.
+    # this is a temporary solution as all extruders should use some kind of skirt 
+    # to be put into a consistent state.
+    $_->retracted($_->retract_length_toolchange + $_->retract_restart_extra_toolchange)
+        for @{$Slic3r::extruders}[1 .. $#{$Slic3r::extruders}];
+    $gcodegen->retract;
+    
     # write start commands to file
     printf $fh $gcodegen->set_bed_temperature($Slic3r::Config->first_layer_bed_temperature, 1),
         if $Slic3r::Config->first_layer_bed_temperature && $Slic3r::Config->start_gcode !~ /M190/i;
@@ -646,7 +647,6 @@ sub write_gcode {
         
         # extrude brim
         if ($layer_id == 0 && !$brim_done) {
-            $gcode .= $gcodegen->set_tool($Slic3r::Config->support_material_extruder-1);
             $gcodegen->shift_x($shift[X]);
             $gcodegen->shift_y($shift[Y]);
             $gcode .= $gcodegen->extrude_loop($_, 'brim') for @{$self->brim};
@@ -790,14 +790,11 @@ sub total_extrusion_volume {
     return $self->total_extrusion_length * ($Slic3r::extruders->[0]->filament_diameter**2) * PI/4 / 1000;
 }
 
-# this method will return the supplied input file path after expanding its
+# this method will return the value of $self->output_file after expanding its
 # format variables with their values
 sub expanded_output_filepath {
     my $self = shift;
-    my ($path, $input_file) = @_;
-    
-    # if no input file was supplied, take the first one from our objects
-    $input_file ||= $self->objects->[0]->input_file;
+    my ($path) = @_;
     
     # if output path is an existing directory, we take that and append
     # the specified filename format
@@ -805,6 +802,7 @@ sub expanded_output_filepath {
 
     # if no explicit output file was defined, we take the input
     # file directory and append the specified filename format
+    my $input_file = $self->objects->[0]->input_file;
     $path ||= (fileparse($input_file))[1] . $Slic3r::Config->output_filename_format;
     
     my $input_filename = my $input_filename_base = basename($input_file);
@@ -813,7 +811,6 @@ sub expanded_output_filepath {
     return $Slic3r::Config->replace_options($path, {
         input_filename      => $input_filename,
         input_filename_base => $input_filename_base,
-        %{ $self->extra_variables },
     });
 }
 

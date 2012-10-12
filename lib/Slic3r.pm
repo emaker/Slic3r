@@ -21,9 +21,6 @@ BEGIN {
     $have_threads = $Config{useithreads} && eval "use threads; use Thread::Queue; 1";
 }
 
-warn "Running Slic3r under Perl >= 5.16 is not supported nor recommended\n"
-    if $^V >= v5.16;
-
 use FindBin;
 our $var = "$FindBin::Bin/var";
 
@@ -44,7 +41,6 @@ use Slic3r::GCode;
 use Slic3r::Geometry qw(PI);
 use Slic3r::Layer;
 use Slic3r::Line;
-use Slic3r::Model;
 use Slic3r::Point;
 use Slic3r::Polygon;
 use Slic3r::Polyline;
@@ -56,7 +52,7 @@ eval "use Slic3r::Build";
 
 use constant SCALING_FACTOR         => 0.000001;
 use constant RESOLUTION             => 0.01;
-use constant OVERLAP_FACTOR         => 0.51;
+use constant OVERLAP_FACTOR         => 0.5;
 use constant SMALL_PERIMETER_LENGTH => (6.5 / SCALING_FACTOR) * 2 * PI;
 
 # The following variables hold the objects used throughout the slicing

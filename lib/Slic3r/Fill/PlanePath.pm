@@ -60,7 +60,7 @@ sub fill_surface {
     # paths must be rotated back
     $self->rotate_points_back(\@paths, $rotate_vector);
     
-    return { flow_spacing => $params{flow_spacing} }, @paths;
+    return {}, @paths;
 }
 
 1;

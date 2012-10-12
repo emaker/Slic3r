@@ -17,10 +17,7 @@ sub read_file {
     }
     close $fh;
     
-    my $model = Slic3r::Model->new;
-    my $object = $model->add_object(vertices => $vertices);
-    my $volume = $object->add_volume(facets => $facets);
-    return $model;
+    return Slic3r::TriangleMesh->new(vertices => $vertices, facets => $facets);
 }
 
 1;

@@ -70,26 +70,6 @@ sub BUILD {
     }
 }
 
-sub merge {
-    my $class = shift;
-    my @meshes = @_;
-    
-    my $vertices = [];
-    my $facets = [];
-    
-    foreach my $mesh (@meshes) {
-        my $v_offset = @$vertices;
-        push @$vertices, @{$mesh->vertices};
-        push @$facets, map {
-            my $f = [@$_];
-            $f->[$_] += $v_offset for -3..-1;
-            $f;
-        } @{$mesh->facets};
-    }
-    
-    return $class->new(vertices => $vertices, facets => $facets);
-}
-
 sub clone {
     my $self = shift;
     return (ref $self)->new(
@@ -355,7 +335,7 @@ sub align_to_origin {
     
     # calculate the displacements needed to 
     # have lowest value for each axis at coordinate 0
-    my @extents = $self->extents;
+    my @extents = $self->bounding_box;
     $self->move(map -$extents[$_][MIN], X,Y,Z);
 }
 
@@ -379,7 +359,7 @@ sub duplicate {
     $self->BUILD;
 }
 
-sub extents {
+sub bounding_box {
     my $self = shift;
     my @extents = (map [undef, undef], X,Y,Z);
     foreach my $vertex (@{$self->vertices}) {
@@ -394,7 +374,7 @@ sub extents {
 sub size {
     my $self = shift;
     
-    my @extents = $self->extents;
+    my @extents = $self->bounding_box;
     return map $extents[$_][MAX] - $extents[$_][MIN], (X,Y,Z);
 }
 
@@ -404,7 +384,7 @@ sub slice_facet {
     my @vertices = @{$self->facets->[$facet_id]}[-3..-1];
     Slic3r::debugf "\n==> FACET %d (%f,%f,%f - %f,%f,%f - %f,%f,%f):\n",
         $facet_id, map @{$self->vertices->[$_]}, @vertices
-        if 0;#$Slic3r::debug;
+        if $Slic3r::debug;
     
     # find the vertical extents of the facet
     my ($min_z, $max_z) = (99999999999, -99999999999);

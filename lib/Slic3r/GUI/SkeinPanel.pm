@@ -57,8 +57,8 @@ sub do_slice {
         $config->validate;
 
         # confirm slicing of more than one copies
-        my $copies = $config->duplicate_grid->[X] * $config->duplicate_grid->[Y];
-        $copies = $config->duplicate if $config->duplicate > 1;
+        my $copies = $Slic3r::Config->duplicate_grid->[X] * $Slic3r::Config->duplicate_grid->[Y];
+        $copies = $Slic3r::Config->duplicate if $Slic3r::Config->duplicate > 1;
         if ($copies > 1) {
             my $confirmation = Wx::MessageDialog->new($self, "Are you sure you want to slice $copies copies?",
                                                       'Multiple Copies', wxICON_QUESTION | wxOK | wxCANCEL);
@@ -96,7 +96,7 @@ sub do_slice {
         Slic3r::GUI->save_settings;
         
         my $print = Slic3r::Print->new(config => $config);
-        $print->add_objects_from_file($input_file);
+        $print->add_object_from_file($input_file);
         $print->validate;
 
         # select output file

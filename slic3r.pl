@@ -30,7 +30,6 @@ my %cli_options = ();
         'save=s'                => \$opt{save},
         'load=s@'               => \$opt{load},
         'ignore-nonexistent-config' => \$opt{ignore_nonexistent_config},
-        'datadir=s'             => \$opt{datadir},
         'export-svg'            => \$opt{export_svg},
         'merge|m'               => \$opt{merge},
     );
@@ -74,10 +73,6 @@ if ($opt{save}) {
 # launch GUI
 my $gui;
 if (!@ARGV && !$opt{save} && eval "require Slic3r::GUI; 1") {
-    {
-        no warnings 'once';
-        $Slic3r::GUI::datadir = $opt{datadir} if $opt{datadir};
-    }
     $gui = Slic3r::GUI->new;
     $gui->{skeinpanel}->load_config_file($_) for @{$opt{load}};
     $gui->{skeinpanel}->load_config($cli_config);
@@ -91,9 +86,9 @@ if (@ARGV) {  # slicing from command line
     
     while (my $input_file = shift @ARGV) {
         my $print = Slic3r::Print->new(config => $config);
-        $print->add_objects_from_file($input_file);
+        $print->add_object_from_file($input_file);
         if ($opt{merge}) {
-            $print->add_objects_from_file($_) for splice @ARGV, 0;
+            $print->add_object_from_file($_) for splice @ARGV, 0;
         }
         $print->duplicate;
         $print->arrange_objects if @{$print->objects} > 1;

@@ -6,7 +6,7 @@ use warnings;
 use parent 'Slic3r::Polyline';
 
 use Slic3r::Geometry qw(polygon_lines polygon_remove_parallel_continuous_edges
-    polygon_remove_acute_vertices polygon_segment_having_point point_in_polygon);
+    scale polygon_remove_acute_vertices polygon_segment_having_point point_in_polygon);
 use Slic3r::Geometry::Clipper qw(JT_MITER);
 
 sub lines {
@@ -71,7 +71,13 @@ sub safety_offset {
 
 sub offset {
     my $self = shift;
-    return map Slic3r::Polygon->new($_), Slic3r::Geometry::Clipper::offset([$self], @_);
+    my ($distance, $scale, $joinType, $miterLimit) = @_;
+    $scale      ||= &Slic3r::SCALING_FACTOR * 1000000;
+    $joinType   = JT_MITER if !defined $joinType;
+    $miterLimit ||= 2;
+    
+    my $offsets = Math::Clipper::offset([$self], $distance, $scale, $joinType, $miterLimit);
+    return map Slic3r::Polygon->new($_), @$offsets;
 }
 
 # this method subdivides the polygon segments to that no one of them
@@ -111,7 +117,7 @@ sub is_printable {
     # detect them and we would be discarding them.
     my $p = $self->clone;
     $p->make_counter_clockwise;
-    return $p->offset(Slic3r::Geometry::scale($flow_width || $Slic3r::flow->width) / 2) ? 1 : 0;
+    return $p->offset(scale($flow_width || $Slic3r::flow->width) / 2) ? 1 : 0;
 }
 
 sub is_valid {
