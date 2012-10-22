@@ -20,6 +20,7 @@ our @EXPORT_OK = qw(
     shortest_path collinear scale unscale merge_collinear_lines
     rad2deg_dir bounding_box_center line_intersects_any douglas_peucker
     polyline_remove_short_segments normal triangle_normal polygon_is_convex
+    scaled_epsilon bounding_box_3D size_3D
 );
 
 
@@ -38,6 +39,7 @@ use constant MAX => 1;
 our $parallel_degrees_limit = abs(deg2rad(0.1));
 
 sub epsilon () { 1E-4 }
+sub scaled_epsilon () { epsilon / &Slic3r::SCALING_FACTOR }
 
 sub scale   ($) { $_[0] / &Slic3r::SCALING_FACTOR }
 sub unscale ($) { $_[0] * &Slic3r::SCALING_FACTOR }
@@ -240,6 +242,7 @@ sub polygon_lines {
 sub nearest_point {
     my ($point, $points) = @_;
     my $index = nearest_point_index(@_);
+    return undef if !defined $index;
     return $points->[$index];
 }
 
@@ -704,6 +707,27 @@ sub bounding_box_intersect {
     return 1;
 }
 
+# 3D
+sub bounding_box_3D {
+    my ($points) = @_;
+    
+    my @extents = (map [undef, undef], X,Y,Z);
+    foreach my $point (@$points) {
+        for (X,Y,Z) {
+            $extents[$_][MIN] = $point->[$_] if !defined $extents[$_][MIN] || $point->[$_] < $extents[$_][MIN];
+            $extents[$_][MAX] = $point->[$_] if !defined $extents[$_][MAX] || $point->[$_] > $extents[$_][MAX];
+        }
+    }
+    return @extents;
+}
+
+sub size_3D {
+    my ($points) = @_;
+    
+    my @extents = bounding_box_3D($points);
+    return map $extents[$_][MAX] - $extents[$_][MIN], (X,Y,Z);
+}
+
 sub angle3points {
     my ($p1, $p2, $p3) = @_;
     # p1 is the center
@@ -880,7 +904,7 @@ sub douglas_peucker2 {
 }
 
 sub arrange {
-    my ($total_parts, $partx, $party, $areax, $areay, $dist) = @_;
+    my ($total_parts, $partx, $party, $areax, $areay, $dist, $Config) = @_;
     
     my $linint = sub {
         my ($value, $oldmin, $oldmax, $newmin, $newmax) = @_;
@@ -893,8 +917,13 @@ sub arrange {
     
     # margin needed for the skirt
     my $skirt_margin;		
-    if ($Slic3r::Config->skirts > 0) {
-        $skirt_margin = ($Slic3r::flow->spacing * $Slic3r::Config->skirts + $Slic3r::Config->skirt_distance) * 2;
+    if ($Config->skirts > 0) {
+        my $flow = Slic3r::Flow->new(
+            layer_height    => $Config->get_value('first_layer_height'),
+            nozzle_diameter => $Config->nozzle_diameter->[0],  # TODO: actually look for the extruder used for skirt
+            width           => $Config->get_value('first_layer_extrusion_width'),
+        );
+        $skirt_margin = ($flow->spacing * $Config->skirts + $Config->skirt_distance) * 2;
     } else {
         $skirt_margin = 0;		
     }
