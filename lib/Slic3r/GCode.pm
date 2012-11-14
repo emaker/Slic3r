@@ -108,7 +108,7 @@ sub extrude_loop {
     # clip the path to avoid the extruder to get exactly on the first point of the loop;
     # if polyline was shorter than the clipping distance we'd get a null polyline, so
     # we discard it in that case
-    $extrusion_path->clip_end($self->layer ? $self->layer->flow->scaled_width : $Slic3r::flow->scaled_width * 0.25);
+    $extrusion_path->clip_end($self->layer ? $self->layer->flow->scaled_width : $Slic3r::flow->scaled_width * 0.15);
     return '' if !@{$extrusion_path->polyline};
     
     # extrude along the path
@@ -126,9 +126,9 @@ sub extrude_path {
     
    	$self->old_start($path->points->[0]) if ($path->role == 0 || $path->role == 3);
     if ($path->role == 0 || $path->role == 3 || $path->role == 10 || $path->role == 2) {
-	    $path->clip_start(scale($self->layer ? $self->layer->flow->width : $Slic3r::flow->width) * 0.5);
+	    $path->clip_start(scale($self->layer ? $self->layer->flow->width : $Slic3r::flow->width) * 0.15);
 	}
-    $path->clip_end(scale($self->layer ? $self->layer->flow->width : $Slic3r::flow->width) * 0.5) if ($path->role == 0 || $path->role == 3);
+    $path->clip_end(scale($self->layer ? $self->layer->flow->width : $Slic3r::flow->width) * 0.15) if ($path->role == 0 || $path->role == 3);
     $path->merge_continuous_lines;
     
     # detect arcs
