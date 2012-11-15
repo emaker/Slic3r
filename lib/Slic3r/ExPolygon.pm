@@ -64,6 +64,11 @@ sub offset {
     return Slic3r::Geometry::Clipper::offset($self, @_);
 }
 
+sub offset_ex {
+    my $self = shift;
+    return Slic3r::Geometry::Clipper::offset_ex($self, @_);
+}
+
 sub safety_offset {
     my $self = shift;
     
@@ -75,11 +80,6 @@ sub safety_offset {
         $self->contour->safety_offset,
         @{ Slic3r::Geometry::Clipper::safety_offset([$self->holes]) },
     );
-}
-
-sub offset_ex {
-    my $self = shift;
-    return Slic3r::Geometry::Clipper::offset_ex($self, @_);
 }
 
 sub noncollapsing_offset_ex {
@@ -142,6 +142,11 @@ sub bounding_box_polygon {
         [ $bb[2], $bb[3] ],
         [ $bb[0], $bb[3] ],
     ]);
+}
+
+sub bounding_box_center {
+    my $self = shift;
+    return Slic3r::Geometry::bounding_box_center($self->contour);
 }
 
 sub clip_line {

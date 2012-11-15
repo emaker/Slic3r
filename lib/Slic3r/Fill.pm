@@ -18,7 +18,6 @@ use Slic3r::Surface ':types';
 
 
 has 'print'     => (is => 'ro', required => 1);
-has 'max_print_dimension' => (is => 'rw');
 has 'fillers'   => (is => 'rw', default => sub { {} });
 
 our %FillTypes = (
@@ -32,22 +31,17 @@ our %FillTypes = (
     honeycomb           => 'Slic3r::Fill::Honeycomb',
 );
 
-sub BUILD {
-    my $self = shift;
-    
-    my $print_size = $self->print->size;
-    my $max_print_dimension = ($print_size->[X] > $print_size->[Y] ? $print_size->[X] : $print_size->[Y]) * sqrt(2);
-    $self->max_print_dimension($max_print_dimension);
-    
-    $self->filler($_) for ('rectilinear', $Slic3r::Config->fill_pattern, $Slic3r::Config->solid_fill_pattern);
-}
-
 sub filler {
     my $self = shift;
     my ($filler) = @_;
+    
+    if (!ref $self) {
+        return $FillTypes{$filler}->new;
+    }
+    
     if (!$self->fillers->{$filler}) {
-        $self->fillers->{$filler} = $FillTypes{$filler}->new(print => $self->print);
-        $self->fillers->{$filler}->max_print_dimension($self->max_print_dimension);
+        my $f = $self->fillers->{$filler} = $FillTypes{$filler}->new;
+        $f->bounding_box([ $self->print->bounding_box ]) if $f->can('bounding_box');
     }
     return $self->fillers->{$filler};
 }
@@ -55,8 +49,6 @@ sub filler {
 sub make_fill {
     my $self = shift;
     my ($layer) = @_;
-    
-    $_->layer($layer) for values %{$self->fillers};
     
     Slic3r::debugf "Filling layer %d:\n", $layer->id;
     
@@ -151,11 +143,16 @@ sub make_fill {
             next SURFACE unless $density > 0;
         }
         
-        my @paths = $self->fillers->{$filler}->fill_surface(
-            $surface,
-            density         => $density,
-            flow_spacing    => $flow_spacing,
-        );
+        my @paths;
+        {
+            my $f = $self->filler($filler);
+            $f->layer_id($layer->id);
+            @paths = $f->fill_surface(
+                $surface,
+                density         => $density,
+                flow_spacing    => $flow_spacing,
+            );
+        }
         my $params = shift @paths;
         
         # save into layer
@@ -169,7 +166,7 @@ sub make_fill {
                         : $is_solid
                             ? ($surface->surface_type == S_TYPE_TOP ? EXTR_ROLE_TOPSOLIDFILL : EXTR_ROLE_SOLIDFILL)
                             : EXTR_ROLE_FILL),
-                    depth_layers => $surface->depth_layers,
+                    height => $surface->depth_layers * $Slic3r::Config->layer_height,
                     flow_spacing => $params->{flow_spacing} || (warn "Warning: no flow_spacing was returned by the infill engine, please report this to the developer\n"),
                 ), @paths,
             ],

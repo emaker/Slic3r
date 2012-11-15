@@ -5,8 +5,6 @@ use utf8;
 
 use List::Util qw(first);
 
-use constant PI => 4 * atan2(1, 1);
-
 # cemetery of old config settings
 our @Ignore = qw(duplicate_x duplicate_y multiply_x multiply_y support_material_tool);
 
@@ -155,7 +153,7 @@ our $Options = {
         default => [1],
     },
     'temperature' => {
-        label   => 'Temperature',
+        label   => 'Other layers',
         tooltip => 'Extruder temperature for layers after the first one. Set this to zero to disable temperature control commands in the output.',
         sidetext => '°C',
         cli     => 'temperature=i@',
@@ -166,7 +164,7 @@ our $Options = {
         default => [200],
     },
     'first_layer_temperature' => {
-        label   => 'First layer temperature',
+        label   => 'First layer',
         tooltip => 'Extruder temperature for first layer. If you want to control temperature manually during print, set this to zero to disable temperature control commands in the output file.',
         sidetext => '°C',
         cli     => 'first-layer-temperature=i@',
@@ -203,7 +201,7 @@ our $Options = {
     
     # filament options
     'first_layer_bed_temperature' => {
-        label   => 'First layer bed temperature',
+        label   => 'First layer',
         tooltip => 'Heated build plate temperature for the first layer. Set this to zero to disable bed temperature control commands in the output.',
         sidetext => '°C',
         cli     => 'first-layer-bed-temperature=i',
@@ -212,7 +210,7 @@ our $Options = {
         default => 0,
     },
     'bed_temperature' => {
-        label   => 'Bed Temperature',
+        label   => 'Other layers',
         tooltip => 'Bed temperature for layers after the first one. Set this to zero to disable bed temperature control commands in the output.',
         sidetext => '°C',
         cli     => 'bed-temperature=i',
@@ -440,8 +438,22 @@ our $Options = {
     },
     'solid_layers' => {
         label   => 'Solid layers',
-        tooltip => 'Number of solid layers to generate on top and bottom.',
+        tooltip => 'Number of solid layers to generate on top and bottom surfaces.',
         cli     => 'solid-layers=i',
+        type    => 'i',
+        shortcut => [qw(top_solid_layers bottom_solid_layers)],
+    },
+    'top_solid_layers' => {
+        label   => 'Top',
+        tooltip => 'Number of solid layers to generate on top surfaces.',
+        cli     => 'top-solid-layers=i',
+        type    => 'i',
+        default => 3,
+    },
+    'bottom_solid_layers' => {
+        label   => 'Bottom',
+        tooltip => 'Number of solid layers to generate on bottom surfaces.',
+        cli     => 'bottom-solid-layers=i',
         type    => 'i',
         default => 3,
     },
@@ -682,7 +694,7 @@ END
         default => 0,
     },
     'min_fan_speed' => {
-        label   => 'Min fan speed',
+        label   => 'Min',
         tooltip => 'This setting represents the minimum PWM your fan needs to work.',
         sidetext => '%',
         cli     => 'min-fan-speed=i',
@@ -691,7 +703,7 @@ END
         default => 35,
     },
     'max_fan_speed' => {
-        label   => 'Max fan speed',
+        label   => 'Max',
         tooltip => 'This setting represents the maximum speed of your fan.',
         sidetext => '%',
         cli     => 'max-fan-speed=i',
@@ -761,6 +773,15 @@ END
         cli     => 'skirts=i',
         type    => 'i',
         default => 1,
+    },
+    'min_skirt_length' => {
+        label   => 'Minimum extrusion length',
+        tooltip => 'Generate no less than the number of skirt loops required to consume the specified amount of filament on the bottom layer. For multi-extruder machines, this minimum applies to each extruder.',
+        sidetext => 'mm',
+        cli     => 'min-skirt-length=f',
+        type    => 'f',
+        default => 0,
+        min     => 0,
     },
     'skirt_distance' => {
         label   => 'Distance from object',
@@ -846,7 +867,7 @@ END
         default => 0,
     },
     'extruder_clearance_radius' => {
-        label   => 'Extruder clearance radius',
+        label   => 'Radius',
         tooltip => 'Set this to the clearance radius around your extruder. If the extruder is not centered, choose the largest value for safety. This setting is used to check for collisions and to display the graphical preview in the plater.',
         sidetext => 'mm',
         cli     => 'extruder-clearance-radius=f',
@@ -854,7 +875,7 @@ END
         default => 20,
     },
     'extruder_clearance_height' => {
-        label   => 'Extruder clearance height',
+        label   => 'Height',
         tooltip => 'Set this to the vertical distance between your nozzle tip and (usually) the X carriage rods. In other words, this is the height of the clearance cylinder around your extruder, and it represents the maximum depth the extruder can peek before colliding with other printed objects.',
         sidetext => 'mm',
         cli     => 'extruder-clearance-height=f',
@@ -883,7 +904,11 @@ sub new {
 sub new_from_defaults {
     my $class = shift;
     my @opt_keys = 
-    return $class->new(map { $_ => $Options->{$_}{default} } (@_ ? @_ : keys %$Options));
+    return $class->new(
+        map { $_ => $Options->{$_}{default} }
+            grep !$Options->{$_}{shortcut},
+            (@_ ? @_ : keys %$Options)
+    );
 }
 
 sub new_from_cli {
@@ -988,6 +1013,10 @@ sub set {
         if $deserialize && $Options->{$opt_key}{deserialize};
     
     $self->{$opt_key} = $value;
+    
+    if ($Options->{$opt_key}{shortcut}) {
+        $self->set($_, $value, $deserialize) for @{$Options->{$opt_key}{shortcut}};
+    }
 }
 
 sub set_ifndef {
@@ -1019,6 +1048,7 @@ sub save {
     
     my $ini = { _ => {} };
     foreach my $opt_key (sort keys %$self) {
+        next if $Options->{$opt_key}{shortcut};
         next if $Options->{$opt_key}{gui_only};
         $ini->{_}{$opt_key} = $self->serialize($opt_key);
     }
@@ -1071,8 +1101,9 @@ sub validate {
         if $self->perimeters < 0;
     
     # --solid-layers
-    die "Invalid value for --solid-layers\n"
-        if $self->solid_layers < 0;
+    die "Invalid value for --solid-layers\n" if defined $self->solid_layers && $self->solid_layers < 0;
+    die "Invalid value for --top-solid-layers\n"    if $self->top_solid_layers      < 0;
+    die "Invalid value for --bottom-solid-layers\n" if $self->bottom_solid_layers   < 0;
     
     # --print-center
     die "Invalid value for --print-center\n"
@@ -1157,13 +1188,21 @@ sub replace_options {
     $string =~ s/\[version\]/$Slic3r::VERSION/eg;
     
     # build a regexp to match the available options
-    my $options = join '|',
-        grep !$Slic3r::Config::Options->{$_}{multiline},
+    my @options = grep !$Slic3r::Config::Options->{$_}{multiline},
         grep $self->has($_),
         keys %{$Slic3r::Config::Options};
+    my $options_regex = join '|', @options;
     
     # use that regexp to search and replace option names with option values
-    $string =~ s/\[($options)\]/$self->serialize($1)/eg;
+    $string =~ s/\[($options_regex)\]/$self->serialize($1)/eg;
+    foreach my $opt_key (grep ref $self->$_ eq 'ARRAY', @options) {
+        my $value = $self->$opt_key;
+        $string =~ s/\[${opt_key}_${_}\]/$value->[$_]/eg for 0 .. $#$value;
+        if ($Options->{$opt_key}{type} eq 'point') {
+            $string =~ s/\[${opt_key}_X\]/$value->[0]/eg;
+            $string =~ s/\[${opt_key}_Y\]/$value->[1]/eg;
+        }
+    }
     return $string;
 }
 
