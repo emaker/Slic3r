@@ -151,21 +151,23 @@ sub extrude_path {
     # retract if distance from previous position is greater or equal to the one
     # specified by the user
     {
-        my $travel = Slic3r::Line->new($self->last_pos, $path->points->[0]);
-        if ($travel->length >= scale $self->extruder->retract_before_travel) {
-            if (!$Slic3r::Config->only_retract_when_crossing_perimeters || $path->role != EXTR_ROLE_FILL || !first { $_->encloses_line($travel, scaled_epsilon) } @{$self->layer->slices}) {
-    		    if (defined $self->retract_pos && defined $self->prev_role && ($self->prev_role == 10 || $self->prev_role == 2)) {
-			    	#jmg - retract to one extrusion width towards next thread
-			    	#print "retract move ";print $path->role;print " \n";
-			    	#print " from X";print unscale $self->last_pos->x;print " to Y";print unscale $self->last_pos->y;print "\n";
-			    	#print " to X";print unscale $self->retract_pos->x;print " to Y";print unscale $self->retract_pos->y;print "\n";
-			    	    $gcode .= $self->retract(retract_move_to => $self->retract_pos);
-			    } else {
-			    	#print "retract stat ";print $path->role if defined $path->role;print "\n";
-		        	$gcode .= $self->retract(travel_to => $path->points->[0]);
-		    	}
-			}
-        }
+        my $distance_from_last_pos = $self->last_pos->distance_to($path->points->[0]) * &Slic3r::SCALING_FACTOR;
+        my $distance_threshold = $self->extruder->retract_before_travel;
+    
+        if (($self->prev_role == &EXTR_ROLE_FILL || $self->prev_role == &EXTR_ROLE_SOLIDFILL) && ($path->role <= 3 || $path->role == 10)) {
+            $gcode .= $self->retract(travel_to => $path->points->[0]);
+        } elsif ($distance_from_last_pos >= $distance_threshold) {
+	    	if (defined $self->retract_pos && defined $self->prev_role && ($self->prev_role == 10 || $self->prev_role == 2)) {
+		    	#jmg - retract to one extrusion width towards next thread
+		    	#print "retract move ";print $path->role;print " \n";
+		    	#print " from X";print unscale $self->last_pos->x;print " to Y";print unscale $self->last_pos->y;print "\n";
+		    	#print " to X";print unscale $self->retract_pos->x;print " to Y";print unscale $self->retract_pos->y;print "\n";
+		        $gcode .= $self->retract(retract_move_to => $self->retract_pos);
+		    } else {
+		    	#print "retract stat ";print $path->role if defined $path->role;print "\n";
+	        	$gcode .= $self->retract(travel_to => $path->points->[0]);
+	       	}
+	    }
     }
     
     # go to first point of extrusion path
