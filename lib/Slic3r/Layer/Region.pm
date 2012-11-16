@@ -279,7 +279,11 @@ sub make_perimeters {
                         my $params = shift @paths;
                         
                         push @{ $self->thin_fills },
-                            map Slic3r::ExtrusionPath->pack(
+                            map {
+                                $_->polyline->simplify($flow->scaled_width / 3);
+                                $_->pack;
+                            }
+                            map Slic3r::ExtrusionPath->new(
                                 polyline        => Slic3r::Polyline->new(@$_),
                                 role            => EXTR_ROLE_SOLIDFILL,
                                 height          => $self->height,
@@ -393,8 +397,11 @@ sub prepare_fill_surfaces {
     
     # if no solid layers are requested, turn top/bottom surfaces to internal
     # note that this modifies $self->surfaces in place
-    if ($Slic3r::Config->top_solid_layers == 0 && $Slic3r::Config->bottom_solid_layers == 0) {
-        $_->surface_type(S_TYPE_INTERNAL) for grep $_->surface_type != S_TYPE_INTERNAL, @surfaces;
+    if ($Slic3r::Config->top_solid_layers == 0) {
+        $_->surface_type(S_TYPE_INTERNAL) for grep $_->surface_type == S_TYPE_TOP, @surfaces;
+    }
+    if ($Slic3r::Config->bottom_solid_layers == 0) {
+        $_->surface_type(S_TYPE_INTERNAL) for grep $_->surface_type == S_TYPE_BOTTOM, @surfaces;
     }
     
     # if hollow object is requested, remove internal surfaces

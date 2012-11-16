@@ -184,7 +184,6 @@ sub clip_end {
         $distance = 0;
     }
 }
-
 sub clip_start {
     my $self = shift;
     my ($distance) = @_;
