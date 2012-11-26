@@ -59,7 +59,7 @@ sub set_shift {
     $self->shift_x($shift[X]);
     $self->shift_y($shift[Y]);
     
-    $self->last_pos->translate(map -$_, @shift);
+    $self->last_pos->translate(map -(scale $_), @shift);
 }
 
 # this method accepts Z in scaled coordinates
@@ -124,17 +124,16 @@ sub extrude_path {
     my ($path, $description, $recursive) = @_;
     
     $path = $path->unpack if $path->isa('Slic3r::ExtrusionPath::Packed');
-    
-    #if extrude_path is shorter than 2 extrusion widths, ignore it
-    return '' if $path->polyline->length < scale ($self->layer ? $self->layer->flow->width : $Slic3r::flow->width) * 2;
+    $path->simplify(&Slic3r::SCALED_RESOLUTION);
     
    	#$self->old_start($path->points->[0]) if ($path->role == 0 || $path->role == 3);
     if ($path->role == 0 || $path->role == 3 || $path->role == 10 || $path->role == 2) {
-	    $path->clip_start(scale($self->layer ? $self->layer->flow->width : $Slic3r::flow->width) * 0.15);
+	    $path->clip_start(scale $path->flow_spacing * 0.15);
 	}
-    $path->clip_end(scale($self->layer ? $self->layer->flow->width : $Slic3r::flow->width) * 0.15) if ($path->role == 0 || $path->role == 3);
+    $path->clip_end(scale $path->flow_spacing * 0.15) if ($path->role == 0 || $path->role == 3);
 
-    $path->merge_continuous_lines;
+    #$path->merge_continuous_lines;
+    return "" if !$path->length;
     
     # detect arcs
     if ($Slic3r::Config->gcode_arcs && !$recursive) {
@@ -150,14 +149,14 @@ sub extrude_path {
     # retract if distance from previous position is greater or equal to the one
     # specified by the user
     {
-        my $travel = Slic3r::Line->new($self->last_pos->clone, $path->points->[0]->clone);
-        if ($travel->length >= scale $self->extruder->retract_before_travel) {
+      my $travel = Slic3r::Line->new($self->last_pos->clone, $path->points->[0]->clone);
+          if ($travel->length >= scale $self->extruder->retract_before_travel) {
             # move travel back to original layer coordinates.
             # note that we're only considering the current object's islands, while we should
             # build a more complete configuration space
             $travel->translate(-$self->shift_x, -$self->shift_y);
             if (!$Slic3r::Config->only_retract_when_crossing_perimeters || $path->role != &EXTR_ROLE_FILL || !first { $_->encloses_line($travel, scaled_epsilon) } @{$self->layer->slices}) {
-                print $self->last_path->role . "\n" if $self->last_path;
+                #print $self->last_path->role . "\n" if $self->last_path;
                 if ($self->last_path && ($self->last_path->role == &EXTR_ROLE_EXTERNAL_PERIMETER || $self->last_path->role == &EXTR_ROLE_HOLE)) {
                		$gcode .= $self->retract(retract_move_to => $self->retract_pos);
                 }
@@ -213,10 +212,12 @@ sub extrude_path {
             $path->center, $e * unscale $path_length, $description);
     } else {
         my $clipped = 0;
-		if($path->role == 3 || $path->role == 0 && $Slic3r::Config->early_stop_inner) {
+		if($path->role == 3 || $path->role == 0 && $Slic3r::Config->early_stop_inner > 0) {
 			$clipped = scale $path->flow_spacing * $Slic3r::Config->early_stop_inner;#1.5;
+#            my @lines = $path->lines;
+#            print unscale $path->points->[-1]->distance_to($lines[-1]->[B]);print "\n";
 			$path->clip_end($clipped);
-		}
+   		}
 #		if(($path->role == 10 || $path->role == 2) && $Slic3r::Config->early_stop) {
 #			my $d = scale ($self->layer ? $self->layer->flow->spacing : $Slic3r::flow->spacing) * $Slic3r::Config->early_stop;
 #			$path_end=Slic3r::Point->new($path->points->[-1]);
@@ -227,7 +228,7 @@ sub extrude_path {
             $path_length += $line_length;
             my $e_ = unscale $line_length * ($first_e >= 0 ? $first_e : $e);
             undef $e_ if ($clipped && $path_length == $path->length);
-            $gcode .= $self->G1($line->[B], undef, $e_, $description . $path->role);
+            $gcode .= $self->G1($line->[B], undef, $e_, $description . $path->role . "_" . unscale $clipped);
             $first_e = -1;
         }
     }

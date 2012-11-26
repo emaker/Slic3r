@@ -135,8 +135,7 @@ sub make_fill {
             $filler = $Slic3r::Config->solid_fill_pattern;
             if ($is_bridge) {
                 $filler = 'rectilinear';
-                my $width = sqrt($Slic3r::Config->bridge_flow_ratio * ($layer->infill_flow->nozzle_diameter**2));
-                $flow_spacing = $width + &Slic3r::OVERLAP_FACTOR * ($width * PI / 4 - $width);  # this should be moved to Flow.pm
+                $flow_spacing = $layer->infill_flow->bridge_spacing;
             } elsif ($surface->surface_type == S_TYPE_INTERNALSOLID) {
                 $filler = 'rectilinear';
             }
@@ -152,9 +151,13 @@ sub make_fill {
                 $surface,
                 density         => $density,
                 flow_spacing    => $flow_spacing,
+                dont_adjust     => $is_bridge,
             );
         }
         my $params = shift @paths;
+        
+        # ugly hack(tm) to get the right amount of flow (GCode.pm should be fixed)
+        $params->{flow_spacing} = $layer->infill_flow->bridge_width if $is_bridge;
         
         # save into layer
         next unless @paths;
@@ -167,7 +170,7 @@ sub make_fill {
                         : $is_solid
                             ? ($surface->surface_type == S_TYPE_TOP ? EXTR_ROLE_TOPSOLIDFILL : EXTR_ROLE_SOLIDFILL)
                             : EXTR_ROLE_FILL),
-                    height => $surface->depth_layers * $Slic3r::Config->layer_height,
+                    height => $surface->depth_layers * $layer->height,
                     flow_spacing => $params->{flow_spacing} || (warn "Warning: no flow_spacing was returned by the infill engine, please report this to the developer\n"),
                 ), @paths,
             ],
