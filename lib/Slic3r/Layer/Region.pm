@@ -274,7 +274,6 @@ sub make_perimeters {
                             Slic3r::Surface->new(expolygon => $expolygon),
                             density         => 1,
                             flow_spacing    => $flow->spacing,
-                            dont_connect    => 1,  # time-saver
                         );
                         my $params = shift @paths;
                         
@@ -285,7 +284,7 @@ sub make_perimeters {
                             }
                             map Slic3r::ExtrusionPath->new(
                                 polyline        => Slic3r::Polyline->new(@$_),
-                                role            => EXTR_ROLE_SOLIDFILL,
+                                role            => EXTR_ROLE_GAPFILL,
                                 height          => $self->height,
                                 flow_spacing    => $params->{flow_spacing},
                             ), @paths;

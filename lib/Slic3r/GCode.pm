@@ -1,7 +1,7 @@
 package Slic3r::GCode;
 use Moo;
 
-use List::Util qw(first);
+use List::Util qw(min max first);
 use Slic3r::ExtrusionPath ':roles';
 use Slic3r::Geometry qw(scale unscale scaled_epsilon points_coincide PI X Y A B);
 
@@ -26,6 +26,10 @@ has 'last_fan_speed'     => (is => 'rw', default => sub {0});
 has 'last_path'          => (is => 'rw');
 has 'dec'                => (is => 'ro', default => sub { 3 } );
 has 'prev_role'          => (is => 'rw', default => sub {0});
+# used for vibration limit:
+has 'limit_frequency'    => (is => 'rw', default => sub { 0 });
+has 'last_dir'           => (is => 'ro', default => sub { [0,0] });
+has 'segment_time'       => (is => 'ro', default => sub { [ [0,0,0], [0,0,0] ] });
 
 # calculate speeds (mm/min)
 has 'speeds' => (
@@ -33,7 +37,7 @@ has 'speeds' => (
     default => sub {+{
         map { $_ => 60 * $Slic3r::Config->get_value("${_}_speed") }
             qw(travel perimeter small_perimeter external_perimeter infill
-                solid_infill top_solid_infill bridge),
+                solid_infill top_solid_infill support_material bridge gap_fill),
     }},
 );
 
@@ -50,6 +54,8 @@ my %role_speeds = (
     &EXTR_ROLE_SKIRT                        => 'perimeter',
     &EXTR_ROLE_SUPPORTMATERIAL              => 'perimeter',
     &EXTR_ROLE_HOLE                         => 'external_perimeter',
+    &EXTR_ROLE_SUPPORTMATERIAL              => 'support_material',
+    &EXTR_ROLE_GAPFILL                      => 'gap_fill',
 );
 
 sub set_shift {
@@ -74,6 +80,7 @@ sub move_z {
     my $current_z = $self->z;
     if (!defined $current_z || $current_z != ($z + $self->lifted)) {
         $gcode .= $self->retract(move_z => $z);
+        $self->speed('travel');
         $gcode .= $self->G0(undef, $z, 0, $comment || ('move to next layer (' . $self->layer->id . ')'))
             unless ($current_z // -1) != ($self->z // -1);
     }
@@ -165,7 +172,11 @@ sub extrude_path {
         }
     }
     
+    # only apply vibration limiting to gap fill until the algorithm is more mature
+    $self->limit_frequency($path->role == EXTR_ROLE_GAPFILL) if 0;
+    
     # go to first point of extrusion path
+    $self->speed('travel');
     $gcode .= $self->G0($path->points->[0], undef, 0, "move to first $description point")
         if !points_coincide($self->last_pos, $path->points->[0]);
     
@@ -370,10 +381,12 @@ sub _G0_G1 {
     my ($gcode, $point, $z, $e, $comment) = @_;
     my $dec = $self->dec;
     
+    my $speed_factor;
     if ($point) {
         $gcode .= sprintf " X%.${dec}f Y%.${dec}f", 
             ($point->x * &Slic3r::SCALING_FACTOR) + $self->shift_x - $self->extruder->extruder_offset->[X], 
             ($point->y * &Slic3r::SCALING_FACTOR) + $self->shift_y - $self->extruder->extruder_offset->[Y]; #**
+        $speed_factor = $self->_limit_frequency($point) if $self->limit_frequency;
         $self->pen_pos($self->last_pos);
         $self->last_pos($point->clone);
     }
@@ -382,7 +395,7 @@ sub _G0_G1 {
         $gcode .= sprintf " Z%.${dec}f", $z;
     }
     
-    return $self->_Gx($gcode, $e, $comment);
+    return $self->_Gx($gcode, $e, $speed_factor, $comment);
 }
 
 sub G2_G3 {
@@ -402,12 +415,12 @@ sub G2_G3 {
         ($center->[Y] - $self->last_pos->[Y]) * &Slic3r::SCALING_FACTOR;
     
     $self->last_pos($point);
-    return $self->_Gx($gcode, $e, $comment);
+    return $self->_Gx($gcode, $e, undef, $comment);
 }
 
 sub _Gx {
     my $self = shift;
-    my ($gcode, $e, $comment) = @_;
+    my ($gcode, $e, $speed_factor, $comment) = @_;
     my $dec = $self->dec;
     
     # determine speed
@@ -483,7 +496,10 @@ sub set_fan {
     if ($self->last_fan_speed != $speed || $dont_save) {
         $self->last_fan_speed($speed) if !$dont_save;
         if ($speed == 0) {
-            return sprintf "M107%s\n", ($Slic3r::Config->gcode_comments ? ' ; disable fan' : '');
+            my $code = $Slic3r::Config->gcode_flavor eq 'teacup'
+                ? 'M106 S0'
+                : 'M107';
+            return sprintf "$code%s\n", ($Slic3r::Config->gcode_comments ? ' ; disable fan' : '');
         } else {
             return sprintf "M106 %s%d%s\n", ($Slic3r::Config->gcode_flavor eq 'mach3' ? 'P' : 'S'),
                 (255 * $speed / 100), ($Slic3r::Config->gcode_comments ? ' ; enable fan' : '');
@@ -526,6 +542,42 @@ sub set_bed_temperature {
         if $Slic3r::Config->gcode_flavor eq 'teacup' && $wait;
     
     return $gcode;
+}
+
+# http://hydraraptor.blogspot.it/2010/12/frequency-limit.html
+# the following implementation is inspired by Marlin code
+sub _limit_frequency {
+    my $self = shift;
+    my ($point) = @_;
+    
+    return if $Slic3r::Config->vibration_limit == 0;
+    my $min_time = 1 / ($Slic3r::Config->vibration_limit * 60);
+    
+    # calculate the move vector and move direction
+    my @move = map unscale $_, @{ Slic3r::Line->new($self->last_pos, $point)->vector->[B] };
+    my @dir = map { $move[$_] ? (($move[$_] > 0) ? 1 : -1) : 0 } X,Y;
+    
+    my $factor = 1;
+    my $segment_time = abs(max(@move)) / $self->speeds->{$self->speed};
+    if ($segment_time > 0) {
+        my @max_segment_time = ();
+        foreach my $axis (X,Y) {
+            if ($self->last_dir->[$axis] == $dir[$axis]) {
+                $self->segment_time->[$axis][0] += $segment_time;
+            } else {
+                @{ $self->segment_time->[$axis] } = ($segment_time, @{ $self->segment_time->[$axis] }[0,1]);
+            }
+            $max_segment_time[$axis] = max($self->segment_time->[$axis][0], max($self->segment_time->[$axis][1], $self->segment_time->[$axis][2]));
+            $self->last_dir->[$axis] = $dir[$axis] if $dir[$axis];
+        }
+        
+        my $min_segment_time = min(@max_segment_time);
+        if ($min_segment_time < $min_time) {
+            $factor = $min_segment_time / $min_time;
+        }
+    }
+    
+    return $factor;
 }
 
 1;
