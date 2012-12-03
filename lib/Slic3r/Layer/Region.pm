@@ -346,11 +346,12 @@ sub make_perimeters {
                 @{$hole_depths[$current_depth]} = grep $_ ne $parent_hole, @{$hole_depths[$current_depth]};
             }
         }
-        
+        my @holes_sequence = $Slic3r::Config->outer_first ? 0 .. $#holes : reverse 0 .. $#holes;
+        my @island_sequence = $Slic3r::Config->outer_first ? 0 .. $#$island : reverse 0 .. $#$island;
         # do holes, then contours starting from innermost one
         $self->_add_perimeter($holes[$_], $is_external{$_} ? EXTR_ROLE_HOLE : EXTR_ROLE_CONTOUR_INTERNAL_PERIMETER)
-            for reverse 0 .. $#holes;
-        for my $depth (reverse 0 .. $#$island) {
+            for @holes_sequence;
+        for my $depth (@island_sequence) {
             my $role = $depth == $#$island ? EXTR_ROLE_PERIMETER
                 : $depth == 0 ? EXTR_ROLE_EXTERNAL_PERIMETER
                 : EXTR_ROLE_PERIMETER;

@@ -377,6 +377,13 @@ our $Options = {
         default => 0,
     },
     # jmg options
+    'outer_first' => {
+        label   => 'Outer first',
+        tooltip => 'Perimeters are printed outer first, then inner shells',
+        cli     => 'outer_first!',
+        type    => 'bool',
+        default => 1,
+    },
     'early_stop' => {
         label   => 'Early Stop',
         tooltip => 'Perimeter early stop as ratio to extrusion width.',

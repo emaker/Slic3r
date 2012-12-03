@@ -263,7 +263,7 @@ sub extrude_path {
 #   			my $h = scale $path->flow_spacing / $path->points->[-1]->distance_to($last_line->[B]);
 #   			$self->retract_pos(Slic3r::Point->new($path->points->[-1]->x + ($last_line->[B]->x - $path->points->[-1]->x) * $h, $path->points->[-1]->y + ($last_line->[B]->y - $path->points->[-1]->y) * $h));
 #   		}
-        $self->retract_pos($self->last_path->points->[0]);
+        $self->retract_pos($Slic3r::Config->outer_first ? $path->points->[-1] : $self->last_path->points->[0]);
     }
     
     $self->last_path($path);

@@ -392,7 +392,7 @@ sub build {
         },
         {
             title => 'Vertical shells',
-            options => [qw(perimeters randomize_start extra_perimeters)],
+            options => [qw(perimeters randomize_start extra_perimeters outer_first)],
         },
         {
             title => 'Horizontal shells',
