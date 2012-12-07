@@ -784,13 +784,13 @@ sub write_gcode {
                     if ($layer->support_interface_fills && @{ $layer->support_interface_fills->paths });
                 $gcode .= $gcodegen->set_extruder($self->extruders->[$Slic3r::Config->support_material_extruder-1]);
                 if ($layer->support_interface_fills) {
-                    $gcode .= $gcodegen->extrude_path($_, 'support material interface') 
+                    $gcode .= $gcodegen->extrude_path($_, 'support material interface',EXTR_ROLE_SUPPORTMATERIAL) 
                         for $layer->support_interface_fills->shortest_path($gcodegen->last_pos); 
                 }
                 
                 $gcode .= $gcodegen->move_z($layer->print_z);
                 if ($layer->support_fills) {
-                    $gcode .= $gcodegen->extrude_path($_, 'support material',9) 
+                    $gcode .= $gcodegen->extrude_path($_, 'support material',EXTR_ROLE_SUPPORTMATERIAL) 
                         for $layer->support_fills->shortest_path($gcodegen->last_pos);
                 }
             }

@@ -133,11 +133,11 @@ sub extrude_path {
     $path = $path->unpack if $path->isa('Slic3r::ExtrusionPath::Packed');
     $path->simplify(&Slic3r::SCALED_RESOLUTION);
     
-   	#$self->old_start($path->points->[0]) if ($path->role == 0 || $path->role == 3);
-    if ($path->role == 0 || $path->role == 3 || $path->role == 10 || $path->role == 2) {
+   	#$self->old_start($path->points->[0]) if ($path->role == EXTR_ROLE_PERIMETER || $path->role == EXTR_ROLE_CONTOUR_INTERNAL_PERIMETER);
+    if ($path->role == EXTR_ROLE_PERIMETER || $path->role == EXTR_ROLE_CONTOUR_INTERNAL_PERIMETER || $path->role == EXTR_ROLE_HOLE || $path->role == EXTR_ROLE_EXTERNAL_PERIMETER) {
 	    $path->clip_start(scale $path->flow_spacing * 0.15);
 	}
-    $path->clip_end(scale $path->flow_spacing * 0.15) if ($path->role == 0 || $path->role == 3);
+    $path->clip_end(scale $path->flow_spacing * 0.15) if ($path->role == EXTR_ROLE_PERIMETER || $path->role == EXTR_ROLE_CONTOUR_INTERNAL_PERIMETER);
 
     #$path->merge_continuous_lines;
     return "" if !$path->length;
@@ -213,8 +213,7 @@ sub extrude_path {
 	}
     
     # extrude arc or line
-    #my $Role =  (($path->role <= 3 || $path->role == 10) && $path->length <= &Slic3r::SMALL_PERIMETER_LENGTH) ? $path->role : EXTR_ROLE_SMALLPERIMETER;
-    my $Role =  (($path->role == 2 || $path->role == 10) && $path->length <= &Slic3r::SMALL_PERIMETER_LENGTH) ? EXTR_ROLE_SMALLPERIMETER : $path->role;
+    my $Role =  (($path->role == EXTR_ROLE_EXTERNAL_PERIMETER || $path->role == EXTR_ROLE_HOLE || $path->role == EXTR_ROLE_PERIMETER || $path->role == EXTR_ROLE_CONTOUR_INTERNAL_PERIMETER) && $path->length <= &Slic3r::SMALL_PERIMETER_LENGTH) ? EXTR_ROLE_SMALLPERIMETER : $path->role;
     $self->speed( $role_speeds{$Role} || die "Unknown role: " . $Role );
     my $path_length = 0;
     if ($path->isa('Slic3r::ExtrusionPath::Arc')) {
@@ -223,13 +222,13 @@ sub extrude_path {
             $path->center, $e * unscale $path_length, $description);
     } else {
         my $clipped = 0;
-		if($path->role == 3 || $path->role == 0 && $Slic3r::Config->early_stop_inner > 0) {
+		if($path->role == EXTR_ROLE_CONTOUR_INTERNAL_PERIMETER || $path->role == EXTR_ROLE_PERIMETER && $Slic3r::Config->early_stop_inner > 0) {
 			$clipped = scale $path->flow_spacing * $Slic3r::Config->early_stop_inner;#1.5;
 #            my @lines = $path->lines;
 #            print unscale $path->points->[-1]->distance_to($lines[-1]->[B]);print "\n";
 			$path->clip_end($clipped);
    		}
-#		if(($path->role == 10 || $path->role == 2) && $Slic3r::Config->early_stop) {
+#		if(($path->role == EXTR_ROLE_HOLE || $path->role == EXTR_ROLE_EXTERNAL_PERIMETER) && $Slic3r::Config->early_stop) {
 #			my $d = scale ($self->layer ? $self->layer->flow->spacing : $Slic3r::flow->spacing) * $Slic3r::Config->early_stop;
 #			$path_end=Slic3r::Point->new($path->points->[-1]);
 #			$path->clip_end($d);
