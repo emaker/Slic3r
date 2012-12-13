@@ -3,7 +3,7 @@ use Moo;
 
 use List::Util qw(min max first);
 use Slic3r::ExtrusionPath ':roles';
-use Slic3r::Geometry qw(scale unscale scaled_epsilon points_coincide PI X Y A B);
+use Slic3r::Geometry qw(scale unscale scaled_epsilon points_coincide PI X Y A B point_along_segment);
 
 has 'multiple_extruders' => (is => 'ro', default => sub {0} );
 has 'layer'              => (is => 'rw');
@@ -192,7 +192,7 @@ sub extrude_path {
     
     # calculate extrusion length per distance unit
     my $e = $self->extruder->e_per_mm3 * $area;
-    #$e *= 0.6 if $path->role == EXTR_ROLE_SUPPORTMATERIAL && $self->layer->id > 0;
+    #$e /= $Slic3r::Config->support_material_extrusion_width if $path->role == EXTR_ROLE_SUPPORTMATERIAL && $self->layer->id == 0;
     
     # compensate retraction
 	my $first_e = -1;
@@ -201,7 +201,7 @@ sub extrude_path {
 		#print "first dist "; print unscale $distance_to_next_point;print " \n";
 		my $unretract_to = Slic3r::Point->new($path->points->[1]);
 		if ($distance_to_next_point > scale $self->layer->flow->width) {
-			my $h = scale $self->layer->flow->width / $distance_to_next_point;
+			my $h = min(scale $self->layer->flow->width * $Slic3r::Config->unretract_ratio / $distance_to_next_point, 1);
 			#print "$h \n";
 			$unretract_to = Slic3r::Point->new($path->points->[0]->x + $h * ($path->points->[1]->x - $path->points->[0]->x),$path->points->[0]->y + $h * ($path->points->[1]->y - $path->points->[0]->y));
 			$first_e = $e * (1 - $h);
@@ -224,15 +224,8 @@ sub extrude_path {
         my $clipped = 0;
 		if($path->role == EXTR_ROLE_CONTOUR_INTERNAL_PERIMETER || $path->role == EXTR_ROLE_PERIMETER && $Slic3r::Config->early_stop_inner > 0) {
 			$clipped = scale $path->flow_spacing * $Slic3r::Config->early_stop_inner;#1.5;
-#            my @lines = $path->lines;
-#            print unscale $path->points->[-1]->distance_to($lines[-1]->[B]);print "\n";
 			$path->clip_end($clipped);
    		}
-#		if(($path->role == EXTR_ROLE_HOLE || $path->role == EXTR_ROLE_EXTERNAL_PERIMETER) && $Slic3r::Config->early_stop) {
-#			my $d = scale ($self->layer ? $self->layer->flow->spacing : $Slic3r::flow->spacing) * $Slic3r::Config->early_stop;
-#			$path_end=Slic3r::Point->new($path->points->[-1]);
-#			$path->clip_end($d);
-#		}
         foreach my $line ($path->lines) {
             my $line_length = $line->length;
             $path_length += $line_length;
@@ -252,19 +245,20 @@ sub extrude_path {
         }
         $self->elapsed_time($self->elapsed_time + $path_time);
     }
-    if ($self->last_path && ($self->last_path->role == &EXTR_ROLE_PERIMETER || $self->last_path->role == &EXTR_ROLE_CONTOUR_INTERNAL_PERIMETER)) {
-#        my @lines = $self->last_path->lines;
-#        my $last_line = $lines[-1];
-#   		if($path->points->[-1]->distance_to($last_line->[B]) <= scale $path->flow_spacing * 3) {
-#   			my $m = 1.0;
-#   			$self->retract_pos(Slic3r::Point->new( ($last_line->[B]->x - $path->points->[-1]->x) * $m +  $path->points->[-1]->x, ($last_line->[B]->y - $path->points->[-1]->y) * $m +  $path->points->[-1]->y));
-#   		} else {
-#   			my $h = scale $path->flow_spacing / $path->points->[-1]->distance_to($last_line->[B]);
-#   			$self->retract_pos(Slic3r::Point->new($path->points->[-1]->x + ($last_line->[B]->x - $path->points->[-1]->x) * $h, $path->points->[-1]->y + ($last_line->[B]->y - $path->points->[-1]->y) * $h));
-#   		}
-        $self->retract_pos($Slic3r::Config->outer_first ? $path->points->[-1] : $self->last_path->points->[0]);
-    }
-    
+    if ($Slic3r::Config->outer_first) {
+		$self->retract_pos($path->points->[-1]);
+    } elsif ($self->last_path
+			#&& ($self->last_path->role == &EXTR_ROLE_PERIMETER || $self->last_path->role == &EXTR_ROLE_CONTOUR_INTERNAL_PERIMETER)
+			&& ($path->role == &EXTR_ROLE_EXTERNAL_PERIMETER || $path->role == &EXTR_ROLE_HOLE)) {
+        if ($path->points->[-1]->distance_to($self->last_path->points->[-1]) < scale $self->layer->flow->width * 3 ) {
+			$self->retract_pos($self->last_path->points->[-1]);
+		} else {
+			$self->retract_pos(
+				Slic3r::Point->new(
+					Slic3r::Geometry::point_along_segment(
+						$path->points->[-1], $self->last_path->points->[-1], scale $self->layer->flow->width)));
+		}
+	}
     $self->last_path($path);
     
     return $gcode;

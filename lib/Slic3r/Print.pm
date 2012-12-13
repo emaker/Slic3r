@@ -223,7 +223,7 @@ sub init_extruders {
         ));
         $self->first_layer_support_material_flow($extruder->make_flow(
             layer_height    => $self->config->get_value('first_layer_height'),
-            width           => $self->config->first_layer_extrusion_width,
+            width           => $self->config->first_layer_extrusion_width * 1.2,
         ));
     }
     

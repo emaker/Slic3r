@@ -400,6 +400,14 @@ our $Options = {
         type    => 'f',
         default => 0,
     },
+    'unretract_ratio' => {
+        label   => 'Unretract ratio',
+        tooltip => 'Distance travelled during unretract as ratio to extrusion width.',
+        sidetext => 'mm or % (leave 0 for auto)',
+        cli     => 'unretract-ratio=s',
+        type    => 'f',
+        default => 1,
+    },
     # flow options
     'extrusion_width' => {
         label   => 'Default extrusion width',

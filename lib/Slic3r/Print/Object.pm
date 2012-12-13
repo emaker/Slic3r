@@ -513,7 +513,7 @@ sub generate_support_material {
     my $flow                    = $self->print->support_material_flow;
     my $threshold_rad           = deg2rad($Slic3r::Config->support_material_threshold + 1);   # +1 makes the threshold inclusive
     my $overhang_width          = $threshold_rad == 0 ? undef : scale $Slic3r::Config->layer_height * ((cos $threshold_rad) / (sin $threshold_rad));
-    my $distance_from_object    = 1.5 * $flow->scaled_width;
+    my $distance_from_object    = 2.5 * $flow->scaled_width;
     my $pattern_spacing = ($Slic3r::Config->support_material_spacing > $flow->spacing)
         ? $Slic3r::Config->support_material_spacing
         : $flow->spacing;
