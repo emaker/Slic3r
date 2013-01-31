@@ -4,6 +4,7 @@ use Moo;
 use List::Util qw(max min first);
 use Slic3r::ExtrusionPath ':roles';
 use Slic3r::Geometry qw(scale unscale scaled_epsilon points_coincide PI X Y B);
+use Slic3r::Geometry::Clipper qw(union_ex);
 
 has 'multiple_extruders' => (is => 'ro', default => sub {0} );
 has 'layer_count'        => (is => 'ro', required => 1 );
@@ -14,6 +15,10 @@ has 'shift_y'            => (is => 'rw', default => sub {0} );
 has 'z'                  => (is => 'rw');
 has 'speed'              => (is => 'rw');
 
+has 'external_mp'        => (is => 'rw');
+has 'layer_mp'           => (is => 'rw');
+has 'new_object'         => (is => 'rw', default => sub {0});
+has 'straight_once'      => (is => 'rw', default => sub {1});
 has 'extruder'           => (is => 'rw');
 has 'extrusion_distance' => (is => 'rw', default => sub {0} );
 has 'elapsed_time'       => (is => 'rw', default => sub {0} );  # seconds
@@ -66,7 +71,7 @@ sub set_shift {
     # if shift increases (goes towards right), last_pos decreases because it goes towards left
     $self->last_pos->translate(
         scale ($self->shift_x - $shift[X]),
-        scale ($self->shift_x - $shift[Y]),
+        scale ($self->shift_y - $shift[Y]),
     );
     
     $self->shift_x($shift[X]);
@@ -78,6 +83,11 @@ sub change_layer {
     my ($layer) = @_;
     
     $self->layer($layer);
+    if ($Slic3r::Config->avoid_crossing_perimeters) {
+        $self->layer_mp(Slic3r::GCode::MotionPlanner->new(
+            islands => union_ex([ map @$_, @{$layer->slices} ], undef, 1),
+        ));
+    }
     
     my $gcode = "";
     if ($Slic3r::Config->gcode_flavor =~ /^(?:makerbot|sailfish)$/) {
@@ -284,6 +294,43 @@ sub extrude_path {
 		}
 	}
     $self->last_path($path);
+    
+    return $gcode;
+}
+sub travel_to {
+    my $self = shift;
+    my ($point, $comment) = @_;
+    
+    return "" if points_coincide($self->last_pos, $point);
+    $self->speed('travel');
+    my $gcode = "";
+    if ($Slic3r::Config->avoid_crossing_perimeters && $self->last_pos->distance_to($point) > scale 5 && !$self->straight_once) {
+        my $plan = sub {
+            my $mp = shift;
+            return join '', 
+                map $self->G0($_->[B], undef, 0, $comment || ""),
+                $mp->shortest_path($self->last_pos, $point)->lines;
+        };
+        
+        if ($self->new_object) {
+            $self->new_object(0);
+            
+            # represent $point in G-code coordinates
+            $point = $point->clone;
+            my @shift = ($self->shift_x, $self->shift_y);
+            $point->translate(map scale $_, @shift);
+            
+            # calculate path (external_mp uses G-code coordinates so we temporary need a null shift)
+            $self->set_shift(0,0);
+            $gcode .= $plan->($self->external_mp);
+            $self->set_shift(@shift);
+        } else {
+            $gcode .= $plan->($self->layer_mp);
+        }
+    } else {
+        $self->straight_once(0);
+        $gcode .= $self->G0($point, undef, 0, $comment || "");
+    }
     
     return $gcode;
 }
