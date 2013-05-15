@@ -14,6 +14,11 @@ sub lines {
     return polygon_lines($self);
 }
 
+sub boost_polygon {
+    my $self = shift;
+    return Boost::Geometry::Utils::polygon($self);
+}
+
 sub boost_linestring {
     my $self = shift;
     return Boost::Geometry::Utils::linestring([@$self, $self->[0]]);
@@ -31,12 +36,20 @@ sub is_counter_clockwise {
 
 sub make_counter_clockwise {
     my $self = shift;
-    $self->reverse if !$self->is_counter_clockwise;
+    if (!$self->is_counter_clockwise) {
+        $self->reverse;
+        return 1;
+    }
+    return 0;
 }
 
 sub make_clockwise {
     my $self = shift;
-    $self->reverse if $self->is_counter_clockwise;
+    if ($self->is_counter_clockwise) {
+        $self->reverse;
+        return 1;
+    }
+    return 0;
 }
 
 sub merge_continuous_lines {

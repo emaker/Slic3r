@@ -62,7 +62,7 @@ sub new {
         Wx::ToolTip::Enable(1);
         $self->{htoolbar} = Wx::ToolBar->new($self, -1, wxDefaultPosition, wxDefaultSize, wxTB_HORIZONTAL | wxTB_TEXT | wxBORDER_SIMPLE | wxTAB_TRAVERSAL);
         $self->{htoolbar}->AddTool(TB_MORE, "More", Wx::Bitmap->new("$Slic3r::var/add.png", wxBITMAP_TYPE_PNG), '');
-        $self->{htoolbar}->AddTool(TB_LESS, "Less", Wx::Bitmap->new("$Slic3r::var/delete.png", wxBITMAP_TYPE_PNG), '');
+        $self->{htoolbar}->AddTool(TB_LESS, "Fewer", Wx::Bitmap->new("$Slic3r::var/delete.png", wxBITMAP_TYPE_PNG), '');
         $self->{htoolbar}->AddSeparator;
         $self->{htoolbar}->AddTool(TB_45CCW, "45° ccw", Wx::Bitmap->new("$Slic3r::var/arrow_rotate_anticlockwise.png", wxBITMAP_TYPE_PNG), '');
         $self->{htoolbar}->AddTool(TB_45CW, "45° cw", Wx::Bitmap->new("$Slic3r::var/arrow_rotate_clockwise.png", wxBITMAP_TYPE_PNG), '');
@@ -1119,20 +1119,21 @@ sub make_thumbnail {
     my @points = map [ @$_[X,Y] ], @{$self->model_object->mesh->vertices};
     my $mesh = $self->model_object->mesh;
     my $thumbnail = Slic3r::ExPolygon::Collection->new(
-    	expolygons => (@{$mesh->facets} <= 2000)
+    	expolygons => (@{$mesh->facets} <= 5000)
     		? $mesh->horizontal_projection
     		: [ Slic3r::ExPolygon->new(convex_hull($mesh->vertices)) ],
     );
     for (map @$_, map @$_, @{$thumbnail->expolygons}) {
         @$_ = map $_ * $self->thumbnail_scaling_factor, @$_;
     }
-    for (@{$thumbnail->expolygons}) {
-	    $_->simplify(0.3);
-    	$_->rotate(Slic3r::Geometry::deg2rad($self->rotate));
-    	$_->scale($self->scale);
+    foreach my $expolygon (@{$thumbnail->expolygons}) {
+    	@$expolygon = grep $_->area >= 1, @$expolygon;
+	    $expolygon->simplify(0.5);
+    	$expolygon->rotate(Slic3r::Geometry::deg2rad($self->rotate));
+    	$expolygon->scale($self->scale);
     }
+    @{$thumbnail->expolygons} = grep @$_, @{$thumbnail->expolygons};
     $thumbnail->align_to_origin;
-    
     $self->thumbnail($thumbnail);  # ignored in multi-threaded environments
     $self->free_model_object;
     

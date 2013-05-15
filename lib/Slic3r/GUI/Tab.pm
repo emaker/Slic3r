@@ -404,6 +404,10 @@ sub build {
                 },
             ],
         },
+        {
+            title => 'Advanced',
+            options => [qw(avoid_crossing_perimeters)],
+        },
     ]);
     
     $self->add_options_page('Infill', 'shading.png', optgroups => [
@@ -429,6 +433,10 @@ sub build {
         {
             title => 'Modifiers',
             options => [qw(first_layer_speed)],
+        },
+        {
+            title => 'Acceleration control (advanced)',
+            options => [qw(perimeter_acceleration infill_acceleration default_acceleration)],
         },
     ]);
     
@@ -634,6 +642,10 @@ sub build {
                 },
             ],
         },
+        {
+            title => 'Advanced',
+            options => [qw(vibration_limit)],
+        },
     ]);
     
     $self->add_options_page('Custom G-code', 'cog.png', optgroups => [
@@ -651,6 +663,11 @@ sub build {
             title => 'Layer change G-code',
             no_labels => 1,
             options => [qw(layer_gcode)],
+        },
+        {
+            title => 'Tool change G-code',
+            no_labels => 1,
+            options => [qw(toolchange_gcode)],
         },
     ]);
     
