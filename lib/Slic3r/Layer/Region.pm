@@ -2,7 +2,7 @@ package Slic3r::Layer::Region;
 use Moo;
 
 use Slic3r::ExtrusionPath ':roles';
-use Slic3r::Geometry qw(scale shortest_path);
+use Slic3r::Geometry qw(scale unscale shortest_path);
 use Slic3r::Geometry::Clipper qw(safety_offset union_ex diff_ex intersection_ex);
 use Slic3r::Surface ':types';
 use constant PI    => 4 * atan2(1, 1);
@@ -182,9 +182,12 @@ sub make_perimeters {
         
         # experimental hole compensation (see ArcCompensation in the RepRap wiki)
         if (1) {
+            #print $last_offsets[0]; print "\n";
             foreach my $hole ($last_offsets[0]->holes) {
                 my $circumference = abs($hole->length);
-                #next unless $circumference <= &Slic3r::SMALL_PERIMETER_LENGTH;
+                #print "hole found. C="; print unscale $circumference;
+                next unless $circumference <= &Slic3r::SMALL_PERIMETER_LENGTH;
+                #print ", "; print unscale &Slic3r::SMALL_PERIMETER_LENGTH; print "stretched hole\n";
                 # this compensation only works for circular holes, while it would 
                 # overcompensate for hexagons and other shapes having straight edges.
                 # so we require a minimum number of vertices.
@@ -197,10 +200,12 @@ sub make_perimeters {
                 # holes are always turned to contours, so reverse point order before and after
                 $hole->reverse;
                 my @offsetted = $hole->offset(+ ($new_radius - $radius));
+                #print "$#offsetted\n";
                 # skip arc compensation when hole is not round (thus leads to multiple offsets)
                 @$hole = map Slic3r::Point->new($_), @{ $offsetted[0] } if @offsetted == 1;
                 $hole->reverse;
             }
+            #print"\n";
         }
         
         my $distance = $self->perimeter_flow->scaled_spacing;

@@ -171,7 +171,7 @@ sub extrude_path {
     $path->clip_end(scale $path->flow_spacing * 0.15) if ($path->role == EXTR_ROLE_PERIMETER || $path->role == EXTR_ROLE_CONTOUR_INTERNAL_PERIMETER);
 
     #$path->merge_continuous_lines;
-    return "" if !$path->length;
+    return "" if $path->length < scale $self->layer->flow->width * 2;
     
     # detect arcs
     if ($Slic3r::Config->gcode_arcs && !$recursive) {
@@ -258,6 +258,9 @@ sub extrude_path {
         my $clipped = 0;
 		if($path->role == EXTR_ROLE_CONTOUR_INTERNAL_PERIMETER || $path->role == EXTR_ROLE_PERIMETER && $Slic3r::Config->early_stop_inner > 0) {
 			$clipped = scale $path->flow_spacing * $Slic3r::Config->early_stop_inner;#1.5;
+			$path->clip_end($clipped);
+   		}elsif($path->role == EXTR_ROLE_HOLE || $path->role == EXTR_ROLE_EXTERNAL_PERIMETER && $Slic3r::Config->early_stop > 0) {
+			$clipped = scale $path->flow_spacing * $Slic3r::Config->early_stop;
 			$path->clip_end($clipped);
    		}
         foreach my $line ($path->lines) {
@@ -521,6 +524,7 @@ sub _Gx {
         $gcode .= sprintf " %s%.5f", $Slic3r::Config->extrusion_axis, $self->extrusion_distance;
     }
     
+    #$gcode .= ";RETRACT" if $self->speed eq 'retract';
     $gcode .= sprintf " ; %s", $comment if $comment && $Slic3r::Config->gcode_comments;
     if ($append_bridge_off) {
         $gcode .= "\n;_BRIDGE_FAN_END";
