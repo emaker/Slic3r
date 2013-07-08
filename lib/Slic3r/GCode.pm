@@ -162,7 +162,7 @@ sub extrude_path {
     my ($path, $description, $recursive) = @_;
     
     $path = $path->unpack if $path->isa('Slic3r::ExtrusionPath::Packed');
-    $path->simplify(&Slic3r::SCALED_RESOLUTION);
+    $path->simplify(&Slic3r::SCALED_RESOLUTION) if $path->length();
     
    	#$self->old_start($path->points->[0]) if ($path->role == EXTR_ROLE_PERIMETER || $path->role == EXTR_ROLE_CONTOUR_INTERNAL_PERIMETER);
     if ($path->role == EXTR_ROLE_PERIMETER || $path->role == EXTR_ROLE_CONTOUR_INTERNAL_PERIMETER || $path->role == EXTR_ROLE_HOLE || $path->role == EXTR_ROLE_EXTERNAL_PERIMETER) {

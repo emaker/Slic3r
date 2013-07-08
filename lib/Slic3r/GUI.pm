@@ -69,7 +69,7 @@ sub OnInit {
     
     # application frame
     Wx::Image::AddHandler(Wx::PNGHandler->new);
-    my $frame = Wx::Frame->new(undef, -1, 'Slic3r', wxDefaultPosition, [760, 470], wxDEFAULT_FRAME_STYLE);
+    my $frame = Wx::Frame->new(undef, -1, 'Slic3r-emaker', wxDefaultPosition, [760, 470], wxDEFAULT_FRAME_STYLE);
     $frame->SetIcon(Wx::Icon->new("$Slic3r::var/Slic3r_128px.png", wxBITMAP_TYPE_PNG) );
     $self->{skeinpanel} = Slic3r::GUI::SkeinPanel->new($frame);
     $self->SetTopWindow($frame);
