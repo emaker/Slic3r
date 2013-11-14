@@ -304,7 +304,7 @@ sub medial_axis {
             next if @$polyline == 2;
             push @result, Slic3r::Polygon->new(@$polyline[0..$#$polyline-1]);
         } else {
-            push @result, Slic3r::Polyline->new($polyline);
+            push @result, Slic3r::Polyline->new(@$polyline);
         }
     }
     

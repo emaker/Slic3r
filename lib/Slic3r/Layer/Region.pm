@@ -129,7 +129,7 @@ sub _merge_loops {
     # winding order.
     # TODO: find a faster algorithm for this.
     my @loops = sort { $a->encloses_point($b->[0]) ? 0 : 1 } @$loops;  # outer first
-    $safety_offset //= scale 0.1;
+    $safety_offset //= scale 0.0499;
     @loops = @{ safety_offset(\@loops, $safety_offset) };
     my $expolygons = [];
     while (my $loop = shift @loops) {
@@ -261,29 +261,34 @@ sub make_perimeters {
         if ($Slic3r::Config->gap_fill_speed > 0 && $Slic3r::Config->fill_density > 0) {
             my $filler = Slic3r::Fill::Rectilinear->new(layer_id => $self->layer->id);
             
-            my $w = $self->perimeter_flow->width;
+            #my $w = $self->perimeter_flow->width;
+            my $w = $self->infill_flow->width;
             #my @widths = (1.5 * $w, $w, 0.5 * $w);  # worth trying 0.2 too?
-            my @widths = ($w, 0.4 * $w);
+            my @widths = ($w, 0.3 * $w);
             foreach my $width (@widths) {
-                my $flow = $self->perimeter_flow->clone(width => $width);
+                #my $flow = $self->perimeter_flow->clone(width => $width);
+                my $flow = $self->infill_flow->clone(width => $width);
                 
                 # extract the gaps having this width
                 my @this_width = map $_->offset_ex(+0.5*$flow->scaled_width),
                     map $_->noncollapsing_offset_ex(-0.5*$flow->scaled_width),
                     @gaps;
                 
-                if (0) {  # remember to re-enable t/dynamic.t
+                if(1) {
+                #if ($width < $w) {  # remember to re-enable t/dynamic.t
                     # fill gaps using dynamic extrusion width, by treating them like thin polygons,
                     # thus generating the skeleton and using it to fill them
                     my %path_args = (
                         role            => EXTR_ROLE_SOLIDFILL,
+                        density         => 1,
                         flow_spacing    => $flow->spacing,
                     );
                     push @{ $self->thin_fills }, map {
                         $_->isa('Slic3r::Polygon')
                             ? (map $_->pack, Slic3r::ExtrusionLoop->new(polygon => $_, %path_args)->split_at_first_point)  # we should keep these as loops
                             : Slic3r::ExtrusionPath->pack(polyline => $_, %path_args),
-                    } map $_->medial_axis($flow->scaled_width), @this_width;
+                    #} map $_->medial_axis($flow->scaled_width), @this_width;
+                    } map $_->medial_axis(scale $width), @this_width;
                 
                     Slic3r::debugf "  %d gaps filled with extrusion width = %s\n", scalar @this_width, $width
                         if @{ $self->thin_fills };
@@ -313,6 +318,8 @@ sub make_perimeters {
                                 height          => $self->height,
                                 flow_spacing    => $params->{flow_spacing},
                             ), @paths;
+                        Slic3r::debugf "  %d gaps filled with extrusion width = %s\n", scalar @this_width, $width
+                            if @{ $self->thin_fills };                            
                     }
                 }
                 

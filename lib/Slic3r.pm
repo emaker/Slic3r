@@ -9,7 +9,7 @@ require v5.10;
 
 our $VERSION = "0.9.9-dev";
 
-our $debug = 0;
+our $debug = 1;
 sub debugf {
     printf @_ if $debug;
 }
@@ -62,7 +62,7 @@ use Slic3r::TriangleMesh;
 eval "use Slic3r::Build";
 
 use constant SCALING_FACTOR         => 0.000001;
-use constant RESOLUTION             => 0.0125;
+use constant RESOLUTION             => 0.01;#0.0125;
 use constant SCALED_RESOLUTION      => RESOLUTION / SCALING_FACTOR;
 use constant OVERLAP_FACTOR         => 1;
 use constant SMALL_PERIMETER_LENGTH => (6.5 / SCALING_FACTOR) * 2 * PI;
