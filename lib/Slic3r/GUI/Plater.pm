@@ -1539,6 +1539,23 @@ sub export_object_stl {
     $self->statusbar->SetStatusText("STL file exported to $output_file");
 }
 
+# Export function for a single AMF output
+sub export_object_amf {
+    my $self = shift;
+    
+    my ($obj_idx, $object) = $self->selected_object;
+    return if !defined $obj_idx;
+    
+    my $local_model = Slic3r::Model->new;
+    my $model_object = $self->{model}->objects->[$obj_idx];
+    # copy model_object -> local_model
+    $local_model->add_object($model_object);
+        
+    my $output_file = $self->_get_export_file('AMF') or return;
+    $local_model->write_amf($output_file);
+    $self->statusbar->SetStatusText("AMF file exported to $output_file");
+}
+
 sub export_amf {
     my $self = shift;
     
@@ -1553,14 +1570,21 @@ sub _get_export_file {
     my $self = shift;
     my ($format) = @_;
     
-    my $suffix = $format eq 'STL' ? '.stl' : '.amf.xml';
+    my $suffix = $format eq 'STL' ? '.stl' : '.amf';
     
     my $output_file = $main::opt{output};
     {
         $output_file = $self->{print}->output_filepath($output_file // '');
         $output_file =~ s/\.gcode$/$suffix/i;
-        my $dlg = Wx::FileDialog->new($self, "Save $format file as:", dirname($output_file),
-            basename($output_file), &Slic3r::GUI::MODEL_WILDCARD, wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+        my $dlg;
+        $dlg = Wx::FileDialog->new($self, "Save $format file as:", dirname($output_file),
+            basename($output_file), &Slic3r::GUI::STL_MODEL_WILDCARD, wxFD_SAVE | wxFD_OVERWRITE_PROMPT)
+            if $format eq 'STL';
+
+        $dlg = Wx::FileDialog->new($self, "Save $format file as:", dirname($output_file),
+            basename($output_file), &Slic3r::GUI::AMF_MODEL_WILDCARD, wxFD_SAVE | wxFD_OVERWRITE_PROMPT)
+            if $format eq 'AMF';
+
         if ($dlg->ShowModal != wxID_OK) {
             $dlg->Destroy;
             return undef;
@@ -2031,6 +2055,9 @@ sub object_menu {
     }, undef, 'arrow_refresh.png');
     $frame->_append_menu_item($menu, "Export object as STL…", 'Export this single object as STL file', sub {
         $self->export_object_stl;
+    }, undef, 'brick_go.png');
+    $frame->_append_menu_item($menu, "Export object and modifiers as AMF…", 'Export this single object and all associated modifiers as AMF file', sub {
+        $self->export_object_amf;
     }, undef, 'brick_go.png');
     
     return $menu;
