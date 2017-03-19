@@ -657,7 +657,8 @@ Print::validate() const
         }
     } // end if (this->config.complete_objects)
     
-    if (this->config.spiral_vase) {
+//    if (this->config.spiral_vase) { //jmg
+    if (0) {
         size_t total_copies_count = 0;
         FOREACH_OBJECT(this, i_object) total_copies_count += (*i_object)->copies().size();
         if (total_copies_count > 1 && !this->config.complete_objects)
