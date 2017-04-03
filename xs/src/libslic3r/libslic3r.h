@@ -32,6 +32,8 @@ void confess_at(const char *file, int line, const char *func, const char *pat, .
 	#define STDMOVE(WHAT) (WHAT)
 #endif
 
+// dummy macro to mark strings for translation for gettext/poedit
+#define __TRANS(s) s
 namespace Slic3r {
 
 constexpr auto SLIC3R_VERSION = "1.3.0-dev";
@@ -62,6 +64,7 @@ constexpr auto LOOP_CLIPPING_LENGTH_OVER_NOZZLE_DIAMETER = 0.15;
 constexpr coord_t SMALL_PERIMETER_LENGTH = scale_(6.5) * 2 * PI;
 constexpr coordf_t INSET_OVERLAP_TOLERANCE = 0.4;
 constexpr coordf_t EXTERNAL_INFILL_MARGIN = 3;
+constexpr coord_t SCALED_EXTERNAL_INFILL_MARGIN = scale_(EXTERNAL_INFILL_MARGIN);
 
 enum Axis { X=0, Y, Z };
 

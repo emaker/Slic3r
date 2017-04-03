@@ -189,8 +189,11 @@ sub validate {
     die "Invalid value for --gcode-flavor\n"
         if !first { $_ eq $self->gcode_flavor } @{$Options->{gcode_flavor}{values}};
     
-    die "--use-firmware-retraction is only supported by Marlin and Machinekit firmware\n"
-        if $self->use_firmware_retraction && $self->gcode_flavor ne 'smoothie' && $self->gcode_flavor ne 'reprap' && $self->gcode_flavor ne 'machinekit';
+    die "--use-firmware-retraction is only supported by Marlin, Smoothie, Repetier and Machinekit firmware\n"
+        if $self->use_firmware_retraction && $self->gcode_flavor ne 'smoothie' 
+        && $self->gcode_flavor ne 'reprap' 
+        && $self->gcode_flavor ne 'machinekit' 
+        && $self->gcode_flavor ne 'repetier';
     
     die "--use-firmware-retraction is not compatible with --wipe\n"
         if $self->use_firmware_retraction && first {$_} @{$self->wipe};
@@ -265,6 +268,13 @@ sub validate {
                 map $self->get_abs_value_over("${_}_extrusion_width", $max_nozzle_diameter),
                 qw(perimeter infill solid_infill top_infill support_material first_layer);
     }
+    
+    # support material
+    if ($self->support_material) {
+        die "Angle value of 0 is illegal. Use some % value instead (e.g. 150%)\n"
+            if $self->support_material_threshold == 0 || $self->support_material_threshold eq '0';
+    }
+    
     
     # general validation, quick and dirty
     foreach my $opt_key (@{$self->get_keys}) {
