@@ -1163,7 +1163,7 @@ sub options {
         bed_shape z_offset z_steps_per_mm has_heatbed
         gcode_flavor use_relative_e_distances
         serial_port serial_speed
-        octoprint_host octoprint_apikey
+        octoprint_host octoprint_apikey duet_host
         use_firmware_retraction pressure_advance vibration_limit
         use_volumetric_e
         start_gcode end_gcode before_layer_gcode layer_gcode toolchange_gcode between_objects_gcode
@@ -1306,6 +1306,10 @@ sub build {
             }, \$self->{octoprint_host_test_btn});
             $optgroup->append_line($host_line);
             $optgroup->append_single_option_line('octoprint_apikey');
+        }
+        {
+            my $optgroup = $page->new_optgroup('Duet upload');
+            $optgroup->append_single_option_line('duet_host'); 
         }
         {
             my $optgroup = $page->new_optgroup('Firmware');

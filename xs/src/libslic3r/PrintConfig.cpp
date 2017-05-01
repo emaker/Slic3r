@@ -824,6 +824,12 @@ PrintConfigDef::PrintConfigDef()
     def->cli = "octoprint-host=s";
     def->default_value = new ConfigOptionString("");
 
+    def = this->add("duet_host", coString);
+    def->label = "Host or IP";
+    def->tooltip = "Slic3r can upload G-code files to Duet. This field should contain the hostname or IP address of the Duet.";
+    def->cli = "duet-host=s";
+    def->default_value = new ConfigOptionString("");
+
     def = this->add("only_retract_when_crossing_perimeters", coBool);
     def->label = "Only retract when crossing perimeters";
     def->category = "Layers and Perimeters";

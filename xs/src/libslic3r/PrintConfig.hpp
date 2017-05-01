@@ -513,6 +513,7 @@ class HostConfig : public virtual StaticPrintConfig
     public:
     ConfigOptionString              octoprint_host;
     ConfigOptionString              octoprint_apikey;
+    ConfigOptionString              duet_host;
     ConfigOptionString              serial_port;
     ConfigOptionInt                 serial_speed;
     
@@ -524,6 +525,7 @@ class HostConfig : public virtual StaticPrintConfig
     virtual ConfigOption* optptr(const t_config_option_key &opt_key, bool create = false) {
         OPT_PTR(octoprint_host);
         OPT_PTR(octoprint_apikey);
+        OPT_PTR(duet_host);
         OPT_PTR(serial_port);
         OPT_PTR(serial_speed);
         

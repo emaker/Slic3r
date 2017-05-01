@@ -49,7 +49,7 @@ sub new {
     my $self = $class->SUPER::new($parent, -1, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL);
     $self->{config} = Slic3r::Config->new_from_defaults(qw(
         bed_shape complete_objects extruder_clearance_radius skirts skirt_distance brim_width
-        serial_port serial_speed octoprint_host octoprint_apikey overridable filament_colour
+        serial_port serial_speed octoprint_host octoprint_apikey duet_host overridable filament_colour
     ));
     $self->{model} = Slic3r::Model->new;
     $self->{print} = Slic3r::Print->new;
@@ -1354,6 +1354,13 @@ sub config_changed {
                 $self->{btn_send_gcode}->Hide;
             }
             $self->Layout;
+        } elsif ($opt_key eq 'duet_host') {
+            if ($config->get('duet_host')) {
+                $self->{btn_send_gcode}->Show;
+            } else {
+                $self->{btn_send_gcode}->Hide;
+            }
+            $self->Layout;
         }
     }
     
@@ -1668,7 +1675,7 @@ sub on_export_completed {
             $message = "File added to print queue";
             $do_print = 1;
         } elsif ($self->{send_gcode_file}) {
-            $message = "Sending G-code file to the OctoPrint server...";
+            $message = "Sending G-code file to the OctoPrint/Duet server...";
             $send_gcode = 1;
         } else {
             $message = "G-code file exported to " . $self->{export_gcode_output_file};
@@ -1742,13 +1749,21 @@ sub prepare_send {
 
         my $ua = LWP::UserAgent->new;
         $ua->timeout(5);
-        my $res = $ua->get(
-            "http://" . $self->{config}->octoprint_host . "/api/files/local",
-            'X-Api-Key' => $self->{config}->octoprint_apikey,
-        );
+        my $res;
+        if ($self->{config}->octoprint_host) {
+            $res = $ua->get(
+                "http://" . $self->{config}->octoprint_host . "/api/files/local",
+                'X-Api-Key' => $self->{config}->octoprint_apikey,
+            );
+        }else {
+            $res = $ua->get(
+                "http://" . $self->{config}->duet_host . "/rr_files",
+            );            
+        }
         $progress->Destroy;
         if ($res->is_success) {
-            if ($res->decoded_content =~ /"name":\s*"\Q$filename\E"/) {
+            my $searchterm = $self->{config}->octoprint_host ? '/"name":\s*"\Q$filename\E"/' : '"'.$filename.'"';            
+            if ($res->decoded_content =~ $searchterm) {
                 my $dialog = Wx::MessageDialog->new($self,
                     "It looks like a file with the same name already exists in the server. "
                         . "Shall I overwrite it?",
@@ -1777,18 +1792,36 @@ sub send_gcode {
     $ua->timeout(180);
     
     my $path = Slic3r::encode_path($self->{send_gcode_file});
-    my $res = $ua->post(
-        "http://" . $self->{config}->octoprint_host . "/api/files/local",
-        Content_Type => 'form-data',
-        'X-Api-Key' => $self->{config}->octoprint_apikey,
-        Content => [
-            # OctoPrint doesn't like Windows paths so we use basename()
-            # Also, since we need to read from filesystem we process it through encode_path()
-            file => [ $path, basename($path) ],
-            print => $self->{send_gcode_file_print} ? 1 : 0,
-        ],
-    );
-    
+    my $filename = basename($self->{print}->output_filepath($main::opt{output} // ''));
+    my $res;
+    if($self->{config}->octoprint_host){
+        $res = $ua->post(
+            "http://" . $self->{config}->octoprint_host . "/api/files/local",
+            Content_Type => 'form-data',
+            'X-Api-Key' => $self->{config}->octoprint_apikey,
+            Content => [
+                # OctoPrint doesn't like Windows paths so we use basename()
+                # Also, since we need to read from filesystem we process it through encode_path()
+                file => [ $path, basename($path) ],
+                print => $self->{send_gcode_file_print} ? 1 : 0,
+            ],
+        );
+    }else{
+        $res = $ua->post(
+            "http://" . $self->{config}->duet_host . "/rr_upload?name=0:/gcodes/" . $filename . "&time=1234567890123",
+            Content_Type => 'form-data',
+            Content => [
+                # OctoPrint doesn't like Windows paths so we use basename()
+                # Also, since we need to read from filesystem we process it through encode_path()
+                file => [ $path, basename($path) ],
+            ],
+        );        
+        if ($self->{send_gcode_file_print}) {
+            $res = $ua->get(
+                "http://" . $self->{config}->duet_host . "/rr_gcode?gcode=M32%20" . $filename,
+            );
+        }
+    }
     $self->statusbar->StopBusy;
     
     if ($res->is_success) {
