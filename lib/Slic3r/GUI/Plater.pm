@@ -1509,7 +1509,7 @@ sub pause_background_process {
         return 1;
     } elsif (defined $self->{apply_config_timer} && $self->{apply_config_timer}->IsRunning) {
         $self->{apply_config_timer}->Stop;
-        return 1;
+        return 0;  # we didn't actually pause any running thread; need to reschedule
     }
     
     return 0;
@@ -2202,6 +2202,9 @@ sub object_list_changed {
         $self->{htoolbar}->EnableTool($_, $have_objects)
             for (TB_RESET, TB_ARRANGE);
     }
+    
+    # prepagate the event to the frame (a custom Wx event would be cleaner)
+    $self->GetFrame->on_plater_object_list_changed($have_objects);
 }
 
 sub selection_changed {
