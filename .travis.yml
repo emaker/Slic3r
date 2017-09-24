@@ -14,7 +14,8 @@ script:
 after_success:
 - eval $(perl -Mlocal::lib=$TRAVIS_BUILD_DIR/local-lib)
 - LD_LIBRARY_PATH=$WXDIR/lib package/linux/make_archive.sh linux-x64
-- package/deploy/sftp.sh linux ~/slic3r-upload.rsa *.bz2
+- package/linux/appimage.sh x86_64
+- package/deploy/sftp.sh linux ~/slic3r-upload.rsa *.bz2 Slic3r*.AppImage
 branches:
   only:
   - master
@@ -32,6 +33,7 @@ addons:
     - gcc-4.9
     - libgtk2.0-0 
     - libgtk2.0-dev
+    - freeglut3
   ssh_known_hosts: dl.slic3r.org
 notifications:
   irc:

@@ -22,7 +22,26 @@ PrintConfigDef::PrintConfigDef()
     external_fill_pattern.enum_labels.push_back("Octagram Spiral");
     
     ConfigOptionDef* def;
-    
+
+    def = this->add("adaptive_slicing", coBool);
+    def->label = "Use adaptive slicing";
+    def->category = "Layers and Perimeters";
+    def->tooltip = "Automatically determine layer heights by the objects topology instead of using the static value.";
+    def->cli = "adaptive-slicing!";
+    def->default_value = new ConfigOptionBool(false);
+
+    def = this->add("adaptive_slicing_quality", coPercent);
+    def->label = "Adaptive quality";
+    def->category = "Layers and Perimeters";
+    def->tooltip = "Controls the quality / printing time tradeoff for adaptive layer generation. 0 -> fastest printing with max layer height, 100 -> highest quality, min layer height";
+    def->sidetext = "%";
+    def->cli = "adaptive_slicing_quality=f";
+    def->min = 0;
+    def->max = 100;
+    def->gui_type = "slider";
+    def->width = 200;
+    def->default_value = new ConfigOptionPercent(75);
+
     def = this->add("avoid_crossing_perimeters", coBool);
     def->label = "Avoid crossing perimeters";
     def->category = "Layers and Perimeters";
@@ -40,10 +59,12 @@ PrintConfigDef::PrintConfigDef()
         opt->values.push_back(Pointf(0,200));
         def->default_value = opt;
     }
+    def->cli = "bed-shape=s";
+
     def = this->add("has_heatbed", coBool);
     def->label = "Has heated bed";
     def->tooltip = "Unselecting this will suppress automatic generation of bed heating gcode.";
-    def->cli = "has_heatbed!";
+    def->cli = "has-heatbed!";
     def->default_value = new ConfigOptionBool(true);
     
     def = this->add("bed_temperature", coInt);
@@ -750,6 +771,12 @@ PrintConfigDef::PrintConfigDef()
     def->min = 0;
     def->default_value = new ConfigOptionFloat(0.3);
 
+    def = this->add("match_horizontal_surfaces", coBool);
+    def->label = "Match horizontal surfaces";
+    def->tooltip = "Try to match horizontal surfaces during the slicing process. Matching is not guaranteed, very small surfaces and multiple surfaces with low vertical distance might cause bad results.";
+    def->cli = "match-horizontal-surfaces!";
+    def->default_value = new ConfigOptionBool(false);
+
     def = this->add("max_fan_speed", coInt);
     def->label = "Max";
     def->tooltip = "This setting represents the maximum speed of your fan.";
@@ -758,6 +785,18 @@ PrintConfigDef::PrintConfigDef()
     def->min = 0;
     def->max = 100;
     def->default_value = new ConfigOptionInt(100);
+
+    def = this->add("max_layer_height", coFloats);
+	def->label = "Max";
+	def->tooltip = "This is the highest printable layer height for this extruder and limits the resolution for adaptive slicing. Typical values are slightly smaller than nozzle_diameter.";
+	def->sidetext = "mm";
+	def->cli = "max-layer-height=f@";
+	def->min = 0;
+	{
+		ConfigOptionFloats* opt = new ConfigOptionFloats();
+		opt->values.push_back(0.3);
+		def->default_value = opt;
+	}
 
     def = this->add("max_print_speed", coFloat);
     def->label = "Max print speed";
@@ -785,6 +824,18 @@ PrintConfigDef::PrintConfigDef()
     def->min = 0;
     def->max = 100;
     def->default_value = new ConfigOptionInt(35);
+
+    def = this->add("min_layer_height", coFloats);
+	def->label = "Min";
+	def->tooltip = "This is the lowest printable layer height for this extruder and limits the resolution for adaptive slicing. Typical values are 0.1 or 0.05.";
+	def->sidetext = "mm";
+	def->cli = "min-layer-height=f@";
+	def->min = 0;
+	{
+		ConfigOptionFloats* opt = new ConfigOptionFloats();
+		opt->values.push_back(0.15);
+		def->default_value = opt;
+	}
 
     def = this->add("min_print_speed", coFloat);
     def->label = "Min print speed";
@@ -967,6 +1018,14 @@ PrintConfigDef::PrintConfigDef()
     def->min = 0;
     def->default_value = new ConfigOptionInt(0);
 
+    def = this->add("regions_overlap", coFloat);
+    def->label = "Regions/extruders overlap";
+    def->category = "Extruders";
+    def->tooltip = "This setting applies an additional overlap between regions printed with distinct extruders or distinct settings. This shouldn't be needed under normal circumstances.";
+    def->sidetext = "mm";
+    def->cli = "regions-overlap=s";
+    def->default_value = new ConfigOptionFloat(0);
+
     def = this->add("raft_offset", coFloat);
     def->label = "Raft offset";
     def->category = "Support material";
@@ -1137,7 +1196,7 @@ PrintConfigDef::PrintConfigDef()
     def->tooltip = "Speed (baud) of USB/serial port for printer connection.";
     def->cli = "serial-speed=i";
     def->min = 1;
-    def->max = 300000;
+    def->max = 500000;
     def->enum_values.push_back("57600");
     def->enum_values.push_back("115200");
     def->enum_values.push_back("250000");
@@ -1793,6 +1852,12 @@ CLIConfigDef::CLIConfigDef()
     def->label = "Export SVG";
     def->tooltip = "Slice the model and export slices as SVG.";
     def->cli = "export-svg";
+    def->default_value = new ConfigOptionBool(false);
+
+    def = this->add("export_3mf", coBool);
+    def->label = "Export 3MF";
+    def->tooltip = "Slice the model and export slices as 3MF.";
+    def->cli = "export-3mf";
     def->default_value = new ConfigOptionBool(false);
     
     def = this->add("info", coBool);

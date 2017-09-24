@@ -172,8 +172,9 @@ Print::invalidate_state_by_config(const PrintConfigBase &config)
             || opt_key == "brim_connections_width") {
             steps.insert(psBrim);
             steps.insert(psSkirt);
-        } else if (opt_key == "nozzle_diameter"
-            || opt_key == "resolution"
+        } else if (opt_key == "nozzle_diameter") {
+                osteps.insert(posLayers);
+        } else if (opt_key == "resolution"
             || opt_key == "z_steps_per_mm") {
             osteps.insert(posSlice);
         } else if (opt_key == "avoid_crossing_perimeters"
@@ -678,7 +679,7 @@ Print::validate() const
     if (0) {
         size_t total_copies_count = 0;
         FOREACH_OBJECT(this, i_object) total_copies_count += (*i_object)->copies().size();
-        if (total_copies_count > 1 && !this->config.complete_objects)
+        if (total_copies_count > 1 && !this->config.complete_objects.getBool())
             return "The Spiral Vase option can only be used when printing a single object.";
         if (this->regions.size() > 1)
             return "The Spiral Vase option can only be used when printing single material objects.";

@@ -124,7 +124,7 @@ sub _init_menubar {
     # File menu
     my $fileMenu = Wx::Menu->new;
     {
-        wxTheApp->append_menu_item($fileMenu, "Open STL/OBJ/AMF…\tCtrl+O", 'Open a model', sub {
+        wxTheApp->append_menu_item($fileMenu, "Open STL/OBJ/AMF/3MF…\tCtrl+O", 'Open a model', sub {
             $self->{plater}->add if $self->{plater};
         }, undef, 'brick_add.png');
         wxTheApp->append_menu_item($fileMenu, "Open 2.5D TIN mesh…", 'Import a 2.5D TIN mesh', sub {
@@ -191,6 +191,12 @@ sub _init_menubar {
             my $selectMenu = $self->{plater_select_menu} = Wx::Menu->new;
             wxTheApp->append_submenu($self->{plater_menu}, "Select", 'Select an object in the plater', $selectMenu, undef, 'brick.png');
         }
+        wxTheApp->append_menu_item($self->{plater_menu}, "Undo\tCtrl+Z", 'Undo', sub {
+                $plater->undo;
+            }, undef, 'arrow_undo.png');
+        wxTheApp->append_menu_item($self->{plater_menu}, "Redo\tCtrl+Shift+Z", 'Redo', sub {
+                $plater->redo;
+            }, undef, 'arrow_redo.png');
         wxTheApp->append_menu_item($self->{plater_menu}, "Select Next Object\tCtrl+Right", 'Select Next Object in the plater', sub {
             $plater->select_next;
         }, undef, 'arrow_right.png');
@@ -211,6 +217,9 @@ sub _init_menubar {
         wxTheApp->append_menu_item($self->{plater_menu}, "Export plate with modifiers as AMF...", 'Export current plate as AMF, including all modifier meshes', sub {
             $plater->export_amf;
         }, undef, 'brick_go.png');
+        wxTheApp->append_menu_item($self->{plater_menu}, "Export plate with modifiers as 3MF...", 'Export current plate as 3MF, including all modifier meshes', sub {
+                $plater->export_tmf;
+            }, undef, 'brick_go.png');
         $self->{object_menu} = $self->{plater}->object_menu;
         $self->on_plater_object_list_changed(0);
         $self->on_plater_selection_changed(0);
@@ -328,12 +337,20 @@ sub is_loaded {
     return $self->{loaded};
 }
 
+sub on_undo_redo_stacks_changed {
+    my $self = shift;
+    # Enable undo or redo if they have operations in their stack.
+    $self->{plater_menu}->Enable($self->{plater_menu}->FindItem("Undo\tCtrl+Z"), $#{$self->{plater}->{undo_stack}} < 0 ? 0 : 1);
+    $self->{plater_menu}->Enable( $self->{plater_menu}->FindItem("Redo\tCtrl+Shift+Z"),  $#{$self->{plater}->{redo_stack}} < 0 ? 0 : 1);
+}
+
 sub on_plater_object_list_changed {
     my ($self, $have_objects) = @_;
     
     return if !defined $self->{plater_menu};
     $self->{plater_menu}->Enable($_->GetId, $have_objects)
         for $self->{plater_menu}->GetMenuItems;
+    $self->on_undo_redo_stacks_changed;
 }
 
 sub on_plater_selection_changed {
@@ -342,6 +359,8 @@ sub on_plater_selection_changed {
     return if !defined $self->{object_menu};
     $self->{object_menu}->Enable($_->GetId, $have_selection)
         for $self->{object_menu}->GetMenuItems;
+    $self->on_undo_redo_stacks_changed;
+
 }
 
 sub quick_slice {
@@ -358,7 +377,7 @@ sub quick_slice {
         my $input_file;
         my $dir = $Slic3r::GUI::Settings->{recent}{skein_directory} || $Slic3r::GUI::Settings->{recent}{config_directory} || '';
         if (!$params{reslice}) {
-            my $dialog = Wx::FileDialog->new($self, 'Choose a file to slice (STL/OBJ/AMF):', $dir, "", &Slic3r::GUI::MODEL_WILDCARD, wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+            my $dialog = Wx::FileDialog->new($self, 'Choose a file to slice (STL/OBJ/AMF/3MF):', $dir, "", &Slic3r::GUI::MODEL_WILDCARD, wxFD_OPEN | wxFD_FILE_MUST_EXIST);
             if ($dialog->ShowModal != wxID_OK) {
                 $dialog->Destroy;
                 return;
