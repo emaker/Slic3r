@@ -586,6 +586,7 @@ GCode::_extrude(ExtrusionPath path, std::string description, double speed)
         gcode += ";_BRIDGE_FAN_START\n";
     std::string comment = ";_EXTRUDE_SET_SPEED";
     if (path.role == erExternalPerimeter) comment += ";_EXTERNAL_PERIMETER";
+    if (path.role == erPerimeter) comment += ";_INNER_PERIMETER";
     gcode += this->writer.set_speed(F, "", this->enable_cooling_markers ? comment : "");
     double path_length = 0;
     {

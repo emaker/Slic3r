@@ -501,7 +501,8 @@ sub generate_bottom_interface_layers {
     my ($self, $support_z, $base, $top, $interface) = @_;
 
     # If no interface layers are allowed, don't generate bottom interface layers.
-    return if $self->object_config->support_material_interface_layers == 0;
+    return;
+    #return if $self->object_config->support_material_interface_layers == 0;
     
     my $area_threshold = $self->interface_flow->scaled_spacing ** 2;
     

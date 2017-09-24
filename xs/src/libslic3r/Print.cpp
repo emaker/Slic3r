@@ -229,6 +229,7 @@ Print::invalidate_state_by_config(const PrintConfigBase &config)
             || opt_key == "retract_restart_extra_toolchange"
             || opt_key == "retract_speed"
             || opt_key == "slowdown_below_layer_time"
+            || opt_key == "slowdown_perimeters"
             || opt_key == "spiral_vase"
             || opt_key == "standby_temperature_delta"
             || opt_key == "start_gcode"

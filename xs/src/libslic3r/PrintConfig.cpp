@@ -1179,6 +1179,12 @@ PrintConfigDef::PrintConfigDef()
     def->max = 1000;
     def->default_value = new ConfigOptionInt(5);
 
+    def = this->add("slowdown_perimeters", coBool);
+    def->label = "Slowdown perimeters";
+    def->tooltip = "Slowdown perimeters.";
+    def->cli = "slowdown-perimeters!";
+    def->default_value = new ConfigOptionBool(false);
+
     def = this->add("small_perimeter_speed", coFloatOrPercent);
     def->label = "↳ small";
     def->full_label = "Small perimeters speed";

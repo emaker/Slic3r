@@ -535,6 +535,7 @@ $j
     --disable-fan-first-layers Disable fan for the first N layers (default: $config->{disable_fan_first_layers})
     --fan-always-on     Keep fan always on at min fan speed, even for layers that don't need
                         cooling
+    --slowdown-perimeters Slowdown perimeters
    
    Skirt options:
     --skirts            Number of skirts to draw (0+, default: $config->{skirts})

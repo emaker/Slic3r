@@ -442,6 +442,7 @@ class PrintConfig : public GCodeConfig
     ConfigOptionInt                 skirt_height;
     ConfigOptionInt                 skirts;
     ConfigOptionInt                 slowdown_below_layer_time;
+    ConfigOptionBool                slowdown_perimeters;
     ConfigOptionBool                spiral_vase;
     ConfigOptionInt                 standby_temperature_delta;
     ConfigOptionInts                temperature;
@@ -502,6 +503,7 @@ class PrintConfig : public GCodeConfig
         OPT_PTR(skirt_height);
         OPT_PTR(skirts);
         OPT_PTR(slowdown_below_layer_time);
+        OPT_PTR(slowdown_perimeters);
         OPT_PTR(spiral_vase);
         OPT_PTR(standby_temperature_delta);
         OPT_PTR(temperature);

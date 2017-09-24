@@ -63,7 +63,8 @@ CoolingBuffer::flush()
     
     int fan_speed           = gg.config.fan_always_on ? gg.config.min_fan_speed.value : 0;
     float speed_factor      = 1.0;
-    bool slowdown_external  = true;
+    //bool slowdown_external  = true;//JMG
+    bool slowdown_external  = gg.config.slowdown_perimeters;
     
     if (gg.config.cooling) {
         #ifdef SLIC3R_DEBUG
@@ -82,9 +83,10 @@ CoolingBuffer::flush()
             // If we spend most of our time on external perimeters include them in the slowdown,
             // otherwise only alter other extrusions.
             if (this->_elapsed_time_external < time_to_stretch/2.) {
+                printf("ext<stretch/2\n");
                 time_to_stretch -= this->_elapsed_time_external;
                 target_time     -= this->_elapsed_time_external;
-                slowdown_external = false;
+                slowdown_external = true;
             }
             
             speed_factor = time_to_stretch / target_time;
@@ -104,16 +106,18 @@ CoolingBuffer::flush()
             // Adjust feed rate of G1 commands marked with an _EXTRUDE_SET_SPEED
             // as long as they are not _WIPE moves (they cannot if they are _EXTRUDE_SET_SPEED)
             // and they are not preceded directly by _BRIDGE_FAN_START (do not adjust bridging speed).
+            //jmg
             std::string new_gcode;
             std::istringstream ss(gcode);
             std::string line;
             bool bridge_fan_start = false;
+            printf("slowdown perimeters?%s\n", slowdown_external ? "true" : "false");
             while (std::getline(ss, line)) {
                 if (boost::starts_with(line, "G1")
                     && boost::contains(line, ";_EXTRUDE_SET_SPEED")
                     && !boost::contains(line, ";_WIPE")
                     && !bridge_fan_start
-                    && (slowdown_external || !boost::contains(line, ";_EXTERNAL_PERIMETER"))) {
+                    && (slowdown_external || (!boost::contains(line, ";_EXTERNAL_PERIMETER") && !boost::contains(line, ";_INNER_PERIMETER")))) {
                     apply_speed_factor(line, speed_factor, this->_min_print_speed);
                     boost::replace_first(line, ";_EXTRUDE_SET_SPEED", "");
                 }
@@ -139,6 +143,8 @@ CoolingBuffer::flush()
     boost::replace_all(gcode, ";_WIPE", "");
     boost::replace_all(gcode, ";_EXTRUDE_SET_SPEED", "");
     boost::replace_all(gcode, ";_EXTERNAL_PERIMETER", "");
+    boost::replace_all(gcode, ";_INNER_PERIMETER", "");
+    
     
     // Reset the buffer.
     this->_elapsed_time          = 0;

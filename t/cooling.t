@@ -140,6 +140,7 @@ $config->set('disable_fan_first_layers', 0);
     $config->set('fan_below_layer_time', 0);
     $config->set('slowdown_below_layer_time', 10);
     $config->set('min_print_speed', 0);
+    $config->set('slowdown_perimeters', 1);
     $config->set('start_gcode', '');
     $config->set('first_layer_speed', '100%');
     $config->set('external_perimeter_speed', 99);
