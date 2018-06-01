@@ -100,6 +100,7 @@ public:
             || this->role == erSolidInfill
             || this->role == erTopSolidInfill;
     };
+    /// JMG separate overhang flag to adjust speed in CoolingBuffer.cpp
     bool is_bridge() const {
         return this->role == erBridgeInfill
             || this->role == erOverhangPerimeter;
