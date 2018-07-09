@@ -567,8 +567,10 @@ PrintConfigDef::PrintConfigDef()
     def->cli = "first-layer-extrusion-width=s";
     def->ratio_over = "first_layer_height";
     def->min = 0;
-    def->enum_values.push_back("0");
+    def->enum_values.push_back("200%");
     def->enum_labels.push_back("default");
+    def->enum_values.push_back("0");
+    def->enum_labels.push_back("auto");
     def->default_value = new ConfigOptionFloatOrPercent(200, true);
 
     def = this->add("first_layer_height", coFloatOrPercent);
@@ -754,6 +756,12 @@ PrintConfigDef::PrintConfigDef()
     def->cli = "interface-shells!";
     def->category = "Layers and Perimeters";
     def->default_value = new ConfigOptionBool(false);
+
+    def = this->add("label_printed_objects", coBool);
+    def->label = "Label Prints with Object ID";
+    def->tooltip = "Enable this to add comments in the G-Code that label print moves with what object they belong. Can be used with Octoprint CancelObject plugin.";
+    def->cli = "label-printed-objects!";
+    def->default_value = new ConfigOptionBool(0);
 
     def = this->add("layer_gcode", coString);
     def->label = "After layer change G-code";
