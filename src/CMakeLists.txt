@@ -306,6 +306,7 @@ set(SLIC3R_TEST_SOURCES
     ${TESTDIR}/libslic3r/test_geometry.cpp
     ${TESTDIR}/libslic3r/test_log.cpp
     ${TESTDIR}/libslic3r/test_model.cpp
+    ${TESTDIR}/libslic3r/test_polygon.cpp
     ${TESTDIR}/libslic3r/test_print.cpp
     ${TESTDIR}/libslic3r/test_printgcode.cpp
     ${TESTDIR}/libslic3r/test_skirt_brim.cpp
@@ -498,6 +499,7 @@ IF (WIN32)
         add_definitions(-DBOOST_NOWIDE_NO_LIB)
     endif()    
     target_link_libraries(slic3r boost-nowide)
+    target_include_directories(boost-nowide PUBLIC ${COMMON_INCLUDES})
 
     # MinGW apparently has some multiple definitions of UUID-related items
     # deal with it.

@@ -1236,7 +1236,7 @@ Print::_make_brim()
                     //update last position
                     previous = &lines_sorted.back();
                 } else {
-                    previous == NULL;
+                    previous = NULL;
                 }
                 
             }
