@@ -1,6 +1,6 @@
 #include "PrintGCode.hpp"
 #include "PrintConfig.hpp"
-
+#include "Log.hpp"
 #include <ctime>
 #include <iostream>
 
@@ -405,6 +405,13 @@ PrintGCode::process_layer(size_t idx, const Layer* layer, const Points& copies)
         std::vector<double> mm3_per_mm;
         for (auto region_id = 0U; region_id < _print.regions.size(); ++region_id) {
             const PrintRegion* region = _print.get_region(region_id);
+            if( region_id >= layer->region_count() ){
+		Slic3r::Log::error("Layer processing") << "Layer #" << layer->id() 
+		    << " doesn't have region " << region_id << ". "
+		    << " The layer has " << layer->region_count() << " regions."
+		    << std::endl;
+		break;
+	    }
             const LayerRegion* layerm = layer->get_region(region_id);
 
             if (!(region->config.get_abs_value("perimeter_speed") > 0 &&
